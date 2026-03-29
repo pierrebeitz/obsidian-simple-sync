@@ -1,6 +1,7 @@
 import PouchDB from "pouchdb-browser";
 import type { SyncDocument, ChunkDocument, SyncSettings } from "./types";
 import { getPouchDBErrorStatus } from "./schemas";
+import { type Result, ok, tryAsync } from "./result";
 
 /**
  * Extract SyncDocument fields from a PouchDB result object.
@@ -140,126 +141,135 @@ export class SyncDatabase {
   }
 
   /** Get a document by ID (file path). Returns null if not found. */
-  public async get(id: string): Promise<SyncDocument | null> {
-    try {
-      const doc = await this.local.get(id, { conflicts: true });
-      return toSyncDocument(doc);
-    } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 404) return null;
-
-      throw err;
-    }
+  public async get(id: string): Promise<Result<SyncDocument | null>> {
+    const result = await tryAsync(async () => this.local.get(id, { conflicts: true }));
+    if (result.ok) return ok(toSyncDocument(result.value));
+    if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
+    return result;
   }
 
   /** Put a document (create or update). Handles rev conflicts by fetching latest rev first. */
-  public async put(doc: SyncDocument): Promise<void> {
-    try {
+  public async put(doc: SyncDocument): Promise<Result<void>> {
+    const result = await tryAsync(async () => {
       await this.local.put(doc);
-    } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 409) {
-        // Conflict: fetch latest rev and retry
-        const existing = await this.local.get(doc._id);
-        doc._rev = existing._rev;
-        await this.local.put(doc);
-      } else throw err;
-    }
+    });
+    if (result.ok) return ok(undefined);
+    if (getPouchDBErrorStatus(result.error) !== 409) return result;
+    // Conflict: fetch latest rev and retry
+    const existing = await tryAsync(async () => this.local.get(doc._id));
+    if (!existing.ok) return existing;
+    doc._rev = existing.value._rev;
+    return tryAsync(async () => {
+      await this.local.put(doc);
+    });
   }
 
   /** Delete a document by marking it with _deleted flag */
-  public async remove(id: string): Promise<void> {
-    try {
-      const doc = await this.local.get(id);
-      await this.local.remove(doc);
-    } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 404)
-        // Already deleted, nothing to do
-        return;
-
-      throw err;
+  public async remove(id: string): Promise<Result<void>> {
+    const getResult = await tryAsync(async () => this.local.get(id));
+    if (!getResult.ok) {
+      if (getPouchDBErrorStatus(getResult.error) === 404) return ok(undefined);
+      return getResult;
     }
+    return tryAsync(async () => {
+      await this.local.remove(getResult.value);
+    });
   }
 
   /** Bulk insert/update documents */
-  public async bulkPut(docs: SyncDocument[]): Promise<void> {
-    await this.local.bulkDocs(docs);
+  public async bulkPut(docs: SyncDocument[]): Promise<Result<void>> {
+    return tryAsync(async () => {
+      await this.local.bulkDocs(docs);
+    });
   }
 
   /** Get all documents (for initial sync comparison) */
-  public async getAllDocs(): Promise<SyncDocument[]> {
-    const result = await this.local.allDocs({ include_docs: true });
-    return result.rows.flatMap((row) => {
-      if (row.doc === undefined || row.id.startsWith("_design/")) return [];
+  public async getAllDocs(): Promise<Result<SyncDocument[]>> {
+    return tryAsync(async () => {
+      const result = await this.local.allDocs({ include_docs: true });
+      return result.rows.flatMap((row) => {
+        if (row.doc === undefined || row.id.startsWith("_design/")) return [];
 
-      return [toSyncDocument(row.doc)];
+        return [toSyncDocument(row.doc)];
+      });
     });
   }
 
   /** Get all documents that have conflicts */
-  public async getConflicts(): Promise<SyncDocument[]> {
-    const result = await this.local.allDocs({
-      include_docs: true,
-      conflicts: true,
-    });
-    return result.rows.flatMap((row) => {
-      if (row.doc === undefined) return [];
-      if (row.doc._conflicts === undefined || row.doc._conflicts.length === 0) return [];
+  public async getConflicts(): Promise<Result<SyncDocument[]>> {
+    return tryAsync(async () => {
+      const result = await this.local.allDocs({
+        include_docs: true,
+        conflicts: true,
+      });
+      return result.rows.flatMap((row) => {
+        if (row.doc === undefined) return [];
+        if (row.doc._conflicts === undefined || row.doc._conflicts.length === 0) return [];
 
-      return [toSyncDocument(row.doc)];
+        return [toSyncDocument(row.doc)];
+      });
     });
   }
 
   /** Get a specific revision of a document */
-  public async getRevision(id: string, rev: string): Promise<SyncDocument | null> {
-    try {
-      const doc = await this.local.get(id, { rev });
-      return toSyncDocument(doc);
-    } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 404) return null;
-
-      throw err;
-    }
+  public async getRevision(id: string, rev: string): Promise<Result<SyncDocument | null>> {
+    const result = await tryAsync(async () => this.local.get(id, { rev }));
+    if (result.ok) return ok(toSyncDocument(result.value));
+    if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
+    return result;
   }
 
   /** Delete a specific conflict revision */
-  public async removeConflict(id: string, rev: string): Promise<void> {
-    await this.local.remove(id, rev);
+  public async removeConflict(id: string, rev: string): Promise<Result<void>> {
+    return tryAsync(async () => {
+      await this.local.remove(id, rev);
+    });
   }
 
   /** Put a chunk document */
-  public async putChunk(chunk: ChunkDocument): Promise<void> {
-    try {
+  public async putChunk(chunk: ChunkDocument): Promise<Result<void>> {
+    const result = await tryAsync(async () => {
       await this.chunkDb.put(chunk);
-    } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 409) {
-        const existing = await this.chunkDb.get(chunk._id);
-        chunk._rev = existing._rev;
-        await this.chunkDb.put(chunk);
-      } else throw err;
-    }
+    });
+    if (result.ok) return ok(undefined);
+    if (getPouchDBErrorStatus(result.error) !== 409) return result;
+    // Conflict: fetch latest rev and retry
+    const existing = await tryAsync(async () => this.chunkDb.get(chunk._id));
+    if (!existing.ok) return existing;
+    chunk._rev = existing.value._rev;
+    return tryAsync(async () => {
+      await this.chunkDb.put(chunk);
+    });
   }
 
   /** Get chunks for a parent document */
-  public async getChunks(parentId: string): Promise<ChunkDocument[]> {
-    const result = await this.chunkDb.allDocs({
-      include_docs: true,
-      startkey: `chunk:${parentId}:`,
-      endkey: `chunk:${parentId}:\uffff`,
-    });
-    return result.rows.flatMap((row) => {
-      if (row.doc === undefined) return [];
+  public async getChunks(parentId: string): Promise<Result<ChunkDocument[]>> {
+    return tryAsync(async () => {
+      const result = await this.chunkDb.allDocs({
+        include_docs: true,
+        startkey: `chunk:${parentId}:`,
+        endkey: `chunk:${parentId}:\uffff`,
+      });
+      return result.rows.flatMap((row) => {
+        if (row.doc === undefined) return [];
 
-      return [toChunkDocument(row.doc)];
+        return [toChunkDocument(row.doc)];
+      });
     });
   }
 
   /** Bulk put chunks */
-  public async bulkPutChunks(chunks: ChunkDocument[]): Promise<void> {
-    await this.chunkDb.bulkDocs(chunks);
+  public async bulkPutChunks(chunks: ChunkDocument[]): Promise<Result<void>> {
+    return tryAsync(async () => {
+      await this.chunkDb.bulkDocs(chunks);
+    });
   }
 
   /** Destroy the local database */
-  public async destroy(): Promise<void> {
+  public async destroy(): Promise<Result<void>> {
     this.stopSync();
-    await this.local.destroy();
+    return tryAsync(async () => {
+      await this.local.destroy();
+    });
   }
 }

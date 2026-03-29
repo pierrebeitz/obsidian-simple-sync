@@ -47,9 +47,8 @@ export default class SimpleSyncPlugin extends Plugin {
             this.restartSync();
             new Notice(this.settings.paused ? "Sync paused" : "Sync resumed");
           })
-          .catch((err: unknown) => {
-             
-            console.error("[SimpleSync] Failed to save settings:", err);
+          .catch((e: unknown) => {
+            console.error("[SimpleSync] Failed to save settings:", e);
           });
       },
     });
@@ -59,9 +58,8 @@ export default class SimpleSyncPlugin extends Plugin {
       // Delay start slightly to let Obsidian finish loading
       this.registerInterval(
         window.setTimeout(() => {
-          this.startSync().catch((err: unknown) => {
-             
-            console.error("[SimpleSync] Failed to start sync:", err);
+          this.startSync().catch((e: unknown) => {
+            console.error("[SimpleSync] Failed to start sync:", e);
           });
         }, 2000),
       );
@@ -98,9 +96,8 @@ export default class SimpleSyncPlugin extends Plugin {
 
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
-      this.startSync().catch((err: unknown) => {
-         
-        console.error("[SimpleSync] Failed to start sync:", err);
+      this.startSync().catch((e: unknown) => {
+        console.error("[SimpleSync] Failed to start sync:", e);
       });
     }, 500);
   }
@@ -115,16 +112,14 @@ export default class SimpleSyncPlugin extends Plugin {
       return;
     }
 
-    try {
-      this.engine = new SyncEngine(this.app, this.settings);
-      this.engine.onStatusChange((status) => {
-        this.statusBar?.update(status);
-      });
-      this.statusBar?.update("initial-sync");
-      await this.engine.start();
-    } catch (err) {
-       
-      console.error("[SimpleSync] Failed to start sync:", err);
+    this.engine = new SyncEngine(this.app, this.settings);
+    this.engine.onStatusChange((status) => {
+      this.statusBar?.update(status);
+    });
+    this.statusBar?.update("initial-sync");
+    const result = await this.engine.start();
+    if (!result.ok) {
+      console.error("[SimpleSync] Failed to start sync:", result.error);
       new Notice("Sync failed to start. Check your settings.");
       this.statusBar?.update("error");
     }
@@ -136,10 +131,9 @@ export default class SimpleSyncPlugin extends Plugin {
       return false;
     }
     const db = new SyncDatabase("simple-sync-test");
-    try {
-      return await db.testConnection(this.settings);
-    } finally {
-      await db.destroy();
-    }
+    const connected = await db.testConnection(this.settings);
+    const destroyResult = await db.destroy();
+    if (!destroyResult.ok) console.error("[SimpleSync] Failed to destroy test db:", destroyResult.error);
+    return connected;
   }
 }
