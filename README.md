@@ -7,11 +7,11 @@ Sync your Obsidian vault between devices using your own CouchDB server. No cloud
 You have notes on your laptop and you want them on your phone. The options aren't great:
 
 - **Obsidian Sync** works well, but it's $4/month and your notes live on someone else's server.
-- **iCloud / Google Drive** cause sync conflicts that silently corrupt your vault. If you've lost a note to a `(1).md` shadow copy, you know.
-- **Syncthing** is solid but doesn't run on iOS, and the Android app needs attention to keep alive.
+- **iCloud / Google Drive** work until they don't — duplicate files, sync delays, and the occasional silent conflict that quietly overwrites your edits.
+- **Syncthing** is solid but doesn't run on iOS, and the Android app needs attention to stay alive in the background.
 - **Git-based plugins** are powerful if you're comfortable with Git on every device. Most people aren't, especially on mobile.
 
-Simple Sync takes a different path: your notes live in a CouchDB database that *you* run, sync happens instantly over HTTP, and when two devices edit the same note, both versions are preserved. Four settings, and you're done.
+Simple Sync takes a different path: your notes live in a CouchDB database that *you* run, sync happens instantly over HTTP, and when two devices edit the same note, both versions are preserved — never silently discarded. Four settings, and you're done.
 
 ## How it works
 
@@ -24,55 +24,83 @@ Your files ←→ PouchDB (local, inside Obsidian) ←→ CouchDB (your server)
 3. Every local change (edit, create, delete, rename) is written to PouchDB within 300ms, then automatically replicated to CouchDB.
 4. Every remote change arriving from CouchDB is written to your vault immediately.
 
-Because PouchDB stores everything locally, **the plugin works offline**. Changes queue up and replicate when the connection returns.
+Because PouchDB stores everything locally, **the plugin works offline**. Changes queue up and replicate when the connection returns. The status bar shows the current state: `Synced`, `Syncing...`, `Initial sync...`, or `Error`.
 
 ## What happens when there's a conflict
 
-This is where most sync tools either silently lose data or leave you with a mess. Simple Sync is opinionated about this: **you should never lose work**.
+This is where most sync tools either silently lose data or leave you with a mess. Simple Sync is opinionated: **you should never lose work**.
 
 ### Text files (Markdown, JSON, YAML, etc.)
 
-When two devices edit the same file:
-
-1. **If the edits don't overlap**, they're merged automatically using three-way merge. You added a paragraph at the top on your laptop, edited a bullet at the bottom on your phone — both changes land in the file. No conflict file, no intervention needed.
-
-2. **If the edits conflict**, the plugin still attempts a merge (best-effort), but creates a conflict copy so you can review what couldn't be cleanly merged:
+When two devices edit the same file before syncing, the newer version (by timestamp) wins and becomes the file content. The older version is saved as a conflict copy next to the original:
 
 ```
 notes/
-  meeting-notes.md              ← merged result (best effort)
-  meeting-notes.conflict-2026-03-15T14-30-22.md  ← the other version
+  meeting-notes.md                                ← newer version
+  meeting-notes.conflict-2026-03-15T14-30-22.md   ← older version, fully preserved
 ```
 
-3. **If there's no common ancestor** (e.g., both devices created the same file independently), the newer version wins by timestamp, and the older version is saved as a conflict file. Nothing is discarded.
+Both versions are right there in your vault. You can diff them, merge them manually, or delete the conflict copy — whatever makes sense for that situation. The conflict file syncs to all devices like any other file, so you'll see it everywhere.
+
+This is a deliberate choice. Automatic merging sounds appealing, but when it goes wrong you lose data silently. Conflict copies are noisy — you *notice* them — and that's the point.
 
 ### Binary files (images, PDFs, etc.)
 
-Binary files can't be merged. The newest version wins by timestamp. The older version is *not* preserved as a conflict copy — binary conflict files would bloat your vault quickly and there's no meaningful way to "diff" two images. If this matters to you, keep your binaries in version control elsewhere.
+Binary files can't be meaningfully diffed or merged. The newest version wins by timestamp. The older version is **not** preserved — binary conflict copies would bloat your vault quickly. If you have important binaries that change on multiple devices, consider version-controlling them separately.
 
 ### The philosophy
 
-Most sync tools make you choose between "silent data loss" and "manual conflict resolution." Simple Sync picks a third option: resolve automatically when possible, preserve both versions when not, and never make the user do busywork. The conflict files sync like any other file, so they'll show up on all your devices.
+Most sync tools make you choose between "silent data loss" and "manual conflict resolution." Simple Sync picks a third option: keep both versions, put them where you can see them, and let you decide. No merge UI, no conflict markers embedded in your text, no decisions to make under pressure — just two files, clearly named.
 
 ## Getting started
 
 ### 1. Set up CouchDB
 
-You need a CouchDB instance accessible from all your devices. The easiest way to try it:
+You need a CouchDB instance reachable from all your devices. There are a few ways to get one:
 
-```bash
-git clone https://github.com/pierrebeitz/obsidian-simple-sync
-cd obsidian-simple-sync/server
-bash setup.sh
+#### Option A: Docker (easiest for local/home network)
+
+Create a `docker-compose.yml`:
+
+```yaml
+services:
+  couchdb:
+    image: couchdb:3
+    restart: unless-stopped
+    ports:
+      - "5984:5984"
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: changeme
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+
+volumes:
+  couchdb_data:
 ```
 
-This starts CouchDB in Docker on port 5984 with CORS enabled. Default credentials are `admin` / `password` — change them for anything beyond local testing.
+```bash
+docker compose up -d
 
-For real use, run CouchDB on a VPS, NAS, or any machine your devices can reach. A $5/month VPS handles this easily. CouchDB is a single binary with no external dependencies — it's one of the simplest databases to self-host.
+# Create the sync database
+curl -X PUT http://admin:changeme@localhost:5984/obsidian-sync
+```
+
+Enable CORS if Obsidian will connect directly (rather than through a reverse proxy): go to `http://localhost:5984/_utils` → Configuration → CORS → Enable for all origins.
+
+#### Option B: IBM Cloudant (free, managed)
+
+[IBM Cloudant](https://www.ibm.com/products/cloudant) offers a free Lite plan — 1 GB storage, 20 reads/sec, 10 writes/sec. Cloudant speaks the CouchDB replication protocol, so PouchDB syncs to it natively. This is the lowest-effort option if you don't want to run your own server.
+
+Create an IBM Cloud account, provision a Cloudant Lite instance, create a database, and use the Cloudant URL and IAM credentials in the plugin settings.
+
+#### Option C: Free VPS
+
+[Oracle Cloud](https://www.oracle.com/cloud/free/) offers always-free ARM VMs (up to 4 CPUs, 24 GB RAM) — more than enough to run CouchDB in Docker with the setup above. You'll need to set up TLS yourself (Caddy or nginx with Let's Encrypt) so your phone can connect over HTTPS.
 
 ### 2. Install the plugin
 
-Install "Simple Sync" from the Obsidian Community Plugins browser, or manually copy `main.js` and `manifest.json` into `.obsidian/plugins/simple-sync/`.
+Install **Simple Sync** from the Obsidian Community Plugins browser, or manually copy `main.js` and `manifest.json` into `.obsidian/plugins/simple-sync/`.
 
 ### 3. Configure
 
@@ -82,42 +110,40 @@ Open **Settings → Simple Sync** and enter:
 |---------|---------|
 | Server URL | `http://192.168.1.50:5984` or `https://couch.yourdomain.com` |
 | Username | `admin` |
-| Password | `password` |
+| Password | `changeme` |
 | Database Name | `obsidian-sync` |
 
 Hit **Test Connection** to verify, then close settings. Sync starts automatically.
 
 ### 4. Repeat on other devices
 
-Install the plugin on your other devices with the same settings. The initial sync will pull down all existing notes.
+Install the plugin on your other devices with the same settings. The initial sync pulls down all existing notes.
 
 ## Limitations
 
-Being honest about what this plugin doesn't do:
-
-- **You need to run a CouchDB server.** This is the main tradeoff. If you're not comfortable with Docker or a VPS, this plugin isn't for you — Obsidian Sync exists for a reason.
-- **No end-to-end encryption.** Notes are stored as-is in CouchDB. Use HTTPS for transit encryption, and if you need encryption at rest, enable it at the filesystem/volume level on your server.
+- **You need a CouchDB server.** This is the main tradeoff — you're trading setup effort for control. If Docker or a VPS isn't your thing, [Obsidian Sync](https://obsidian.md/sync) exists and works well.
+- **No end-to-end encryption.** Notes are stored as-is in CouchDB. Use HTTPS for transit encryption. For encryption at rest, enable it at the volume/filesystem level on your server.
 - **No selective sync.** The entire vault syncs. There's no ignore list or folder filter.
-- **No version history UI.** CouchDB keeps revisions internally, but the plugin doesn't expose a "browse previous versions" interface.
-- **Binary conflicts lose the older version.** As described above — newest timestamp wins for images, PDFs, and other non-text files.
-- **Large vaults may have a slow first sync.** The initial reconciliation reads every file. After that, only changes are synced.
+- **No version history UI.** CouchDB keeps document revisions internally, but the plugin doesn't expose a "browse previous versions" interface.
+- **Binary conflicts lose the older version.** Newest timestamp wins for images, PDFs, and other non-text files — no conflict copy is created.
+- **Large vaults may have a slow first sync.** The initial reconciliation reads every file. Subsequent syncs are incremental and fast.
 
 ## FAQ
 
 **Is this a replacement for Obsidian Sync?**
-It solves the same core problem (sync your vault across devices) but makes different tradeoffs. Obsidian Sync is zero-setup and supports end-to-end encryption. Simple Sync is self-hosted and free but requires running your own server.
+It solves the same core problem but makes different tradeoffs. Obsidian Sync is zero-setup and supports end-to-end encryption. Simple Sync is self-hosted and free but requires running your own server.
 
 **Can multiple vaults sync to the same CouchDB?**
-Yes — use a different database name for each vault.
+Yes — use a different database name per vault in the plugin settings.
 
 **Does it work on iOS?**
 It should — the plugin doesn't use any platform-specific APIs. But it hasn't been tested extensively on iOS yet. Reports welcome.
 
 **What happens if my server goes down?**
-Nothing bad. PouchDB keeps working locally. Your edits are saved normally and will sync when the server comes back. You'll see "Sync: Error" in the status bar until then.
+Nothing bad. PouchDB keeps working locally. Your edits are saved and will sync when the connection returns. You'll see "Sync: Error" in the status bar until then.
 
-**How much server resources does this need?**
-Very little. CouchDB is lightweight. A small VPS (1 CPU, 512MB RAM) can handle multiple vaults across multiple devices without breaking a sweat.
+**How much server resources does CouchDB need?**
+Very little. A $5/month VPS or the Oracle Cloud free tier handles multiple vaults across multiple devices without issue.
 
 ## License
 
