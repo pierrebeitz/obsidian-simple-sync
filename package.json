@@ -1,6 +1,6 @@
 {
   "name": "obsidian-simple-sync",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Dead-simple vault sync via CouchDB",
   "main": "main.js",
   "scripts": {

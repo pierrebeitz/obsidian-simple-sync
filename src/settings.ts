@@ -9,6 +9,41 @@ interface HasSyncSettings {
   testConnection: () => Promise<Result<void>>;
 }
 
+/**
+ * Parses a CouchDB connection URL into its components.
+ * Accepts: https://user:pass@host:port/dbname
+ */
+function parseConnectionUrl(raw: string): { serverUrl: string; username: string; password: string; dbName: string } | null {
+  try {
+    const url = new URL(raw);
+    const dbName = url.pathname.replace(/^\//, "");
+    if (dbName === "") return null;
+
+    // Rebuild server URL without credentials and db path
+    const serverUrl = `${url.protocol}//${url.host}`;
+    return {
+      serverUrl,
+      username: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      dbName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildConnectionUrl(settings: SyncSettings): string {
+  if (settings.serverUrl === "") return "";
+  try {
+    const url = new URL(settings.serverUrl);
+    if (settings.username !== "") url.username = settings.username;
+    if (settings.password !== "") url.password = settings.password;
+    return `${url.protocol}//${url.username !== "" ? `${url.username}:${url.password}@` : ""}${url.host}/${settings.dbName}`;
+  } catch {
+    return "";
+  }
+}
+
 export class SyncSettingTab extends PluginSettingTab {
   public readonly syncPlugin: HasSyncSettings;
 
@@ -24,6 +59,26 @@ export class SyncSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "Simple Sync Settings" });
 
     new Setting(containerEl)
+      .setName("Connection URL")
+      .setDesc("Paste a full URL to fill all fields: https://user:pass@host:port/dbname")
+      .addText((text) =>
+        text
+          .setPlaceholder("https://admin:password@your-server:5984/obsidian-sync")
+          .setValue(buildConnectionUrl(this.syncPlugin.settings))
+          .onChange(async (value) => {
+            const parsed = parseConnectionUrl(value);
+            if (parsed === null) return;
+
+            this.syncPlugin.settings.serverUrl = parsed.serverUrl;
+            this.syncPlugin.settings.username = parsed.username;
+            this.syncPlugin.settings.password = parsed.password;
+            this.syncPlugin.settings.dbName = parsed.dbName;
+            await this.syncPlugin.saveSettings();
+            this.display();
+          }),
+      );
+
+    new Setting(containerEl)
       .setName("Server URL")
       .setDesc("CouchDB server URL")
       .addText((text) =>
@@ -33,7 +88,6 @@ export class SyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.syncPlugin.settings.serverUrl = value;
             await this.syncPlugin.saveSettings();
-            this.syncPlugin.restartSync();
           }),
       );
 
@@ -44,7 +98,6 @@ export class SyncSettingTab extends PluginSettingTab {
         text.setValue(this.syncPlugin.settings.username).onChange(async (value) => {
           this.syncPlugin.settings.username = value;
           await this.syncPlugin.saveSettings();
-          this.syncPlugin.restartSync();
         }),
       );
 
@@ -55,7 +108,6 @@ export class SyncSettingTab extends PluginSettingTab {
         text.setValue(this.syncPlugin.settings.password).onChange(async (value) => {
           this.syncPlugin.settings.password = value;
           await this.syncPlugin.saveSettings();
-          this.syncPlugin.restartSync();
         });
         text.inputEl.type = "password";
       });
@@ -95,5 +147,9 @@ export class SyncSettingTab extends PluginSettingTab {
           this.syncPlugin.restartSync();
         }),
       );
+  }
+
+  public override hide(): void {
+    this.syncPlugin.restartSync();
   }
 }
