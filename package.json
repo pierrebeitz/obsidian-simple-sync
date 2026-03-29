@@ -9,7 +9,7 @@
     "typecheck": "tsgo --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
-    "test:e2e": "vitest run test/e2e/",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "test:watch": "vitest",
     "check": "concurrently -n types,lint,test --kill-others-on-fail \"tsgo --noEmit\" \"eslint src/\" \"vitest run\""
   },
