@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "diff-match-patch": "^1.0.5",
+    "events": "^3.3.0",
     "pouchdb-browser": "^9.0.0",
     "zod": "^4.3.6"
   }

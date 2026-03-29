@@ -21,7 +21,7 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins,
+    ...builtins.filter((m) => m !== "events"),
   ],
   format: "cjs",
   target: "es2022",
