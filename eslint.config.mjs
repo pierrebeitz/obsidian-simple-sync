@@ -1,5 +1,6 @@
 // @ts-check
 import eslint from "@eslint/js";
+import obsidianmd from "eslint-plugin-obsidianmd";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -110,6 +111,21 @@ export default tseslint.config(
       "no-param-reassign": "error",
       "no-implicit-coercion": "error",
       "curly": ["error", "multi"],
+    },
+  },
+
+  {
+    plugins: { obsidianmd },
+    rules: {
+      ...obsidianmd.configs.recommended,
+      "obsidianmd/ui/sentence-case": [
+        "error",
+        {
+          enforceCamelCaseLower: true,
+          ignoreWords: ["CouchDB"],
+          ignoreRegex: ["^https?://", "^[a-z][a-z0-9]*-[a-z0-9-]+$"],
+        },
+      ],
     },
   },
 
