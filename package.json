@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@eslint/json": "^1.2.0",
     "@types/diff-match-patch": "^1.0.36",
     "@types/node": "^22.0.0",
     "@types/pouchdb": "^6.4.2",
@@ -23,6 +24,7 @@
     "concurrently": "^9.2.1",
     "esbuild": "^0.24.0",
     "eslint": "^10.1.0",
+    "eslint-plugin-obsidianmd": "^0.1.9",
     "obsidian": "latest",
     "pouchdb": "^9.0.0",
     "pouchdb-adapter-http": "^9.0.0",
