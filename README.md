@@ -88,15 +88,7 @@ curl -X PUT http://admin:changeme@localhost:5984/obsidian-sync
 
 Enable CORS if Obsidian will connect directly (rather than through a reverse proxy): go to `http://localhost:5984/_utils` → Configuration → CORS → Enable for all origins.
 
-#### Option B: IBM Cloudant (free, managed)
-
-[IBM Cloudant](https://www.ibm.com/products/cloudant) offers a free Lite plan — 1 GB storage, 20 reads/sec, 10 writes/sec. Cloudant speaks the CouchDB replication protocol, so PouchDB syncs to it natively. This is the lowest-effort option if you don't want to run your own server.
-
-Create an IBM Cloud account, provision a Cloudant Lite instance, create a database, and use the Cloudant URL and IAM credentials in the plugin settings.
-
-#### Option C: Free VPS
-
-[Oracle Cloud](https://www.oracle.com/cloud/free/) offers always-free ARM VMs (up to 4 CPUs, 24 GB RAM) — more than enough to run CouchDB in Docker with the setup above. You'll need to set up TLS yourself (Caddy or nginx with Let's Encrypt) so your phone can connect over HTTPS.
+For access outside your home network, run this on any cheap VPS and put it behind HTTPS (Caddy or nginx with Let's Encrypt) so your phone can connect securely.
 
 ### 2. Install the plugin
 
@@ -143,7 +135,7 @@ It should — the plugin doesn't use any platform-specific APIs. But it hasn't b
 Nothing bad. PouchDB keeps working locally. Your edits are saved and will sync when the connection returns. You'll see "Sync: Error" in the status bar until then.
 
 **How much server resources does CouchDB need?**
-Very little. A $5/month VPS or the Oracle Cloud free tier handles multiple vaults across multiple devices without issue.
+Very little. The cheapest VPS you can find handles multiple vaults across multiple devices without issue.
 
 ## License
 
