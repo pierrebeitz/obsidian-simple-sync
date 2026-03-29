@@ -2,8 +2,8 @@
   "id": "simple-sync",
   "name": "Simple Sync",
   "version": "0.1.0",
-  "minAppVersion": "1.0.0",
-  "description": "Dead-simple vault sync via CouchDB. Zero config, automatic conflict resolution.",
+  "minAppVersion": "1.3.0",
+  "description": "Dead-simple vault sync via your own CouchDB. Minimal setup, automatic conflict resolution.",
   "author": "Pierre",
   "isDesktopOnly": false
 }

@@ -16,8 +16,11 @@ export class StatusBar {
     this.statusBarEl = plugin.addStatusBarItem();
   }
 
-  public update(status: SyncStatus): void {
-    if (this.statusBarEl !== null) this.statusBarEl.textContent = STATUS_TEXT[status];
+  public update(status: SyncStatus, detail?: string): void {
+    if (this.statusBarEl === null) return;
+
+    if (status === "error" && detail !== undefined) this.statusBarEl.textContent = `Sync: ${detail}`;
+    else this.statusBarEl.textContent = STATUS_TEXT[status];
   }
 
   public destroy(): void {

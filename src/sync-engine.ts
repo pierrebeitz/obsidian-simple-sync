@@ -88,7 +88,7 @@ export class SyncEngine {
   private readonly app: App;
   private readonly settings: SyncSettings;
   private status: SyncStatus = "idle";
-  private readonly statusListeners: ((status: SyncStatus) => void)[] = [];
+  private readonly statusListeners: ((status: SyncStatus, detail?: string) => void)[] = [];
 
   /** Echo prevention: tracks paths currently being written by remote sync */
   private readonly syncing = new Set<string>();
@@ -105,7 +105,7 @@ export class SyncEngine {
     this.db = new SyncDatabase(`simple-sync-${settings.dbName}`);
   }
 
-  public onStatusChange(listener: (status: SyncStatus) => void): void {
+  public onStatusChange(listener: (status: SyncStatus, detail?: string) => void): void {
     this.statusListeners.push(listener);
   }
 
@@ -305,7 +305,7 @@ export class SyncEngine {
       },
       (e) => {
         console.error("[SyncEngine] Replication error:", e);
-        this.setStatus("error");
+        this.setStatus("error", e.message);
       },
       () => {
         if (this.status !== "error") this.setStatus("synced");
@@ -581,7 +581,8 @@ export class SyncEngine {
             await ensureParentFolder(this.app, cPath);
             await this.app.vault.create(cPath, resolution.loserContent ?? "");
           });
-          if (!createResult.ok) console.error(`[SyncEngine] Failed to create conflict file ${cPath}:`, createResult.error);
+          if (createResult.ok) new Notice(`Conflict resolved: ${winnerDoc._id}\nSaved alternate version as ${cPath.split("/").pop() ?? cPath}`);
+          else console.error(`[SyncEngine] Failed to create conflict file ${cPath}:`, createResult.error);
         }
 
         // Write resolved content to vault
@@ -595,13 +596,13 @@ export class SyncEngine {
   // Status management
   // ---------------------------------------------------------------------------
 
-  private setStatus(status: SyncStatus): void {
-    if (this.status === status) return;
+  private setStatus(status: SyncStatus, detail?: string): void {
+    if (this.status === status && detail === undefined) return;
 
     this.status = status;
     for (const listener of this.statusListeners)
       try {
-        listener(status);
+        listener(status, detail);
       } catch {
         // Don't let a bad listener break the engine
       }

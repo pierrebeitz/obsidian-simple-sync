@@ -11,7 +11,7 @@ You have notes on your laptop and you want them on your phone. The options aren'
 - **Syncthing** is solid but doesn't run on iOS, and the Android app needs attention to stay alive in the background.
 - **Git-based plugins** are powerful if you're comfortable with Git on every device. Most people aren't, especially on mobile.
 
-Simple Sync takes a different path: your notes live in a CouchDB database that *you* run, sync happens instantly over HTTP, and when two devices edit the same note, both versions are preserved — never silently discarded. Four settings, and you're done.
+Simple Sync takes a different path: your notes live in a CouchDB database that *you* run, sync happens instantly over HTTP, and when two devices edit the same note, both versions are preserved — never silently discarded. One server, four settings, and you're syncing.
 
 ## How it works
 
@@ -132,10 +132,30 @@ Yes — use a different database name per vault in the plugin settings.
 It should — the plugin doesn't use any platform-specific APIs. But it hasn't been tested extensively on iOS yet. Reports welcome.
 
 **What happens if my server goes down?**
-Nothing bad. PouchDB keeps working locally. Your edits are saved and will sync when the connection returns. You'll see "Sync: Error" in the status bar until then.
+Nothing bad. PouchDB keeps working locally. Your edits are saved and will sync when the connection returns. The status bar will show what went wrong (e.g. "Sync: Server unreachable") until the connection recovers.
 
 **How much server resources does CouchDB need?**
 Very little. The cheapest VPS you can find handles multiple vaults across multiple devices without issue.
+
+**What are `.conflict-` files?**
+When two devices edit the same note before syncing, the plugin keeps both versions. The newer edit wins and stays in the original file. The older version is saved as a `.conflict-` file next to it. You'll see a notification when this happens. Use the **"Show recent conflicts"** command (Ctrl/Cmd+P → "Show recent conflicts") to find them.
+
+## Troubleshooting
+
+**"Authentication failed — check username and password"**
+The CouchDB credentials in your plugin settings don't match the server. Double-check the username and password you set in `COUCHDB_USER` / `COUCHDB_PASSWORD` when setting up the server.
+
+**"Server unreachable — check URL and network"**
+The plugin can't reach your CouchDB server. Verify: (1) the server is running (`curl http://your-server:5984`), (2) the URL in settings matches, (3) your firewall allows connections on port 5984, (4) if connecting from mobile, your phone can reach the server (not just localhost).
+
+**"Database not found — check database name"**
+The database doesn't exist on the server. Create it: `curl -X PUT http://admin:password@your-server:5984/obsidian-sync`
+
+**"Access denied — user lacks permission for this database"**
+Your CouchDB user doesn't have read/write access to the database. Check the `_security` document of the database or use the admin account.
+
+**Sync is slow on first run**
+The initial sync reads every file in your vault. For large vaults (1000+ files) this can take a few minutes. Subsequent syncs are incremental and fast.
 
 ## License
 

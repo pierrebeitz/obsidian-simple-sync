@@ -1,11 +1,12 @@
 import { type App, type Plugin, PluginSettingTab, Setting, Notice } from "obsidian";
+import type { Result } from "./result";
 import type { SyncSettings } from "./types";
 
 interface HasSyncSettings {
   settings: SyncSettings;
   saveSettings: () => Promise<void>;
   restartSync: () => void;
-  testConnection: () => Promise<boolean>;
+  testConnection: () => Promise<Result<void>>;
 }
 
 export class SyncSettingTab extends PluginSettingTab {
@@ -74,12 +75,13 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Test Connection")
-      .setDesc("Verify the server is reachable")
+      .setDesc("Verify the server and database are accessible")
       .addButton((button) =>
         button.setButtonText("Test").onClick(async () => {
-          new Notice("Testing...");
-          const ok = await this.syncPlugin.testConnection();
-          new Notice(ok ? "Connection successful!" : "Connection failed");
+          new Notice("Testing connection...");
+          const result = await this.syncPlugin.testConnection();
+          if (result.ok) new Notice("Connection successful!");
+          else new Notice(String(result.error), 8000);
         }),
       );
 

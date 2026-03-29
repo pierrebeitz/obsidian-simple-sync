@@ -1,9 +1,11 @@
 import { Plugin, Notice } from "obsidian";
+import type { TFile } from "obsidian";
 import { z } from "zod";
 import { SyncEngine } from "./sync-engine";
 import { SyncSettingTab } from "./settings";
 import { StatusBar } from "./status";
 import { SyncDatabase } from "./db";
+import type { Result } from "./result";
 import { type SyncSettings, DEFAULT_SETTINGS } from "./types";
 
 const SettingsSchema = z
@@ -50,6 +52,25 @@ export default class SimpleSyncPlugin extends Plugin {
           .catch((e: unknown) => {
             console.error("[SimpleSync] Failed to save settings:", e);
           });
+      },
+    });
+
+    this.addCommand({
+      id: "show-conflicts",
+      name: "Show recent conflicts",
+      callback: () => {
+        const conflictFiles = this.app.vault
+          .getFiles()
+          .filter((f: TFile) => f.path.includes(".conflict-"))
+          .sort((a: TFile, b: TFile) => b.stat.mtime - a.stat.mtime)
+          .slice(0, 20);
+
+        if (conflictFiles.length === 0) {
+          new Notice("No conflict files found.");
+          return;
+        }
+
+        new Notice(`${String(conflictFiles.length)} conflict file(s):\n${conflictFiles.map((f: TFile) => f.path).join("\n")}`, 10000);
       },
     });
 
@@ -113,22 +134,23 @@ export default class SimpleSyncPlugin extends Plugin {
     }
 
     this.engine = new SyncEngine(this.app, this.settings);
-    this.engine.onStatusChange((status) => {
-      this.statusBar?.update(status);
+    this.engine.onStatusChange((status, detail) => {
+      this.statusBar?.update(status, detail);
     });
     this.statusBar?.update("initial-sync");
     const result = await this.engine.start();
     if (!result.ok) {
+      const reason = result.error instanceof Error ? result.error.message : String(result.error);
       console.error("[SimpleSync] Failed to start sync:", result.error);
-      new Notice("Sync failed to start. Check your settings.");
-      this.statusBar?.update("error");
+      new Notice(`Sync failed: ${reason}`);
+      this.statusBar?.update("error", reason);
     }
   }
 
-  public async testConnection(): Promise<boolean> {
+  public async testConnection(): Promise<Result<void>> {
     if (this.settings.serverUrl === "") {
       new Notice("Please enter a server URL first.");
-      return false;
+      return { ok: false, error: new Error("No server URL") };
     }
     return SyncDatabase.testConnection(this.settings);
   }

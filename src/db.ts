@@ -140,15 +140,30 @@ export class SyncDatabase {
     }
   }
 
-  /** Returns true if the remote CouchDB is reachable with the given credentials. */
-  public static async testConnection(settings: SyncSettings): Promise<boolean> {
-    try {
-      const testDb = SyncDatabase.buildRemote(settings, { skip_setup: true });
+  /** Verifies the remote CouchDB is reachable and the database is accessible. */
+  public static async testConnection(settings: SyncSettings): Promise<Result<void>> {
+    const testDb = SyncDatabase.buildRemote(settings, { skip_setup: true });
+    const result = await tryAsync(async () => {
       await testDb.info();
-      return true;
-    } catch {
-      return false;
+    });
+
+    if (result.ok) return ok(undefined);
+    return { ok: false, error: new Error(SyncDatabase.describeConnectionError(result.error)) };
+  }
+
+  /** Extracts a user-friendly error message from a PouchDB connection error. */
+  private static describeConnectionError(err: unknown): string {
+    const status = getPouchDBErrorStatus(err);
+    if (status === 401) return "Authentication failed — check username and password";
+    if (status === 403) return "Access denied — user lacks permission for this database";
+    if (status === 404) return "Database not found — check database name";
+
+    if (err instanceof Error) {
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError"))
+        return "Server unreachable — check URL and network";
+      return `Connection failed: ${err.message}`;
     }
+    return "Connection failed — unknown error";
   }
 
   public async get(id: string): Promise<Result<SyncDocument | null>> {
