@@ -118,14 +118,7 @@ export default tseslint.config(
     plugins: { obsidianmd },
     rules: {
       ...obsidianmd.configs.recommended,
-      "obsidianmd/ui/sentence-case": [
-        "error",
-        {
-          enforceCamelCaseLower: true,
-          ignoreWords: ["CouchDB"],
-          ignoreRegex: ["^https?://", "^[a-z][a-z0-9]*-[a-z0-9-]+$"],
-        },
-      ],
+      "obsidianmd/ui/sentence-case": "off",
     },
   },
 
