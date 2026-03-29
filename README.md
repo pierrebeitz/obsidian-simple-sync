@@ -58,22 +58,46 @@ Most sync tools make you choose between "silent data loss" and "manual conflict 
 
 You need a CouchDB instance reachable from all your devices. There are a few ways to get one:
 
-#### Option A: Docker (easiest for local/home network)
+#### Option A: Docker on a VPS (recommended for multi-device sync)
 
-Create a `docker-compose.yml`:
+Create three files on your server:
 
+**`.env`**
+```bash
+COUCHDB_USER=admin
+COUCHDB_PASSWORD=changeme    # pick something strong
+```
+
+**`couchdb.ini`** — enables CORS (required — Obsidian is a browser and won't connect without it):
+```ini
+[chttpd]
+bind_address = 0.0.0.0
+enable_cors = true
+
+[cors]
+origins = *
+methods = GET, PUT, POST, DELETE, HEAD
+credentials = true
+headers = accept, authorization, content-type, origin, referer, x-csrf-token
+
+[compactions]
+_default = [{db_fragmentation, "70%"}, {view_fragmentation, "60%"}]
+```
+
+**`docker-compose.yml`**
 ```yaml
 services:
   couchdb:
     image: couchdb:3
     restart: unless-stopped
     ports:
-      - "5984:5984"
+      - "127.0.0.1:5984:5984"
     environment:
-      COUCHDB_USER: admin
-      COUCHDB_PASSWORD: changeme
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
     volumes:
       - couchdb_data:/opt/couchdb/data
+      - ./couchdb.ini:/opt/couchdb/etc/local.d/custom.ini
 
 volumes:
   couchdb_data:
@@ -83,12 +107,24 @@ volumes:
 docker compose up -d
 
 # Create the sync database
-curl -X PUT http://admin:changeme@localhost:5984/obsidian-sync
+source .env
+curl -X PUT "http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@localhost:5984/obsidian-sync"
 ```
 
-Enable CORS if Obsidian will connect directly (rather than through a reverse proxy): go to `http://localhost:5984/_utils` → Configuration → CORS → Enable for all origins.
+The port binds to `127.0.0.1` only — put a reverse proxy in front for HTTPS. Caddy is the easiest option:
 
-For access outside your home network, run this on any cheap VPS and put it behind HTTPS (Caddy or nginx with Let's Encrypt) so your phone can connect securely.
+```
+# Caddyfile
+couch.yourdomain.com {
+    reverse_proxy localhost:5984
+}
+```
+
+This gives you automatic HTTPS via Let's Encrypt, so your phone can connect securely.
+
+#### Option B: Docker (local/home network)
+
+Same setup as above, but change the port binding to `"5984:5984"` (all interfaces) and use `http://your-local-ip:5984` as the server URL. Fine for home use; not recommended over the internet without HTTPS.
 
 ### 2. Install the plugin
 

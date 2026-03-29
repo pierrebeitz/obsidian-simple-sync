@@ -160,7 +160,7 @@ export class SyncDatabase {
 
     if (err instanceof Error) {
       if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError"))
-        return "Server unreachable — check URL and network";
+        return "Server unreachable or CORS not enabled — check URL, network, and CouchDB CORS config";
       return `Connection failed: ${err.message}`;
     }
     return "Connection failed — unknown error";

@@ -81,7 +81,7 @@ export class SyncSettingTab extends PluginSettingTab {
           new Notice("Testing connection...");
           const result = await this.syncPlugin.testConnection();
           if (result.ok) new Notice("Connection successful!");
-          else new Notice(String(result.error), 8000);
+          else new Notice(result.error instanceof Error ? result.error.message : String(result.error), 8000);
         }),
       );
 
