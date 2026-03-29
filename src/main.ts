@@ -130,10 +130,6 @@ export default class SimpleSyncPlugin extends Plugin {
       new Notice("Please enter a server URL first.");
       return false;
     }
-    const db = new SyncDatabase("simple-sync-test");
-    const connected = await db.testConnection(this.settings);
-    const destroyResult = await db.destroy();
-    if (!destroyResult.ok) console.error("[SimpleSync] Failed to destroy test db:", destroyResult.error);
-    return connected;
+    return SyncDatabase.testConnection(this.settings);
   }
 }

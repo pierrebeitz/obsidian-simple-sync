@@ -7,7 +7,6 @@ export interface SyncDocument {
   chunks?: string[] | undefined;
   mtime: number;
   size: number;
-  deleted?: boolean | undefined;
   hash: string;
   _conflicts?: string[] | undefined;
 }

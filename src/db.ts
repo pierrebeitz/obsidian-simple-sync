@@ -4,7 +4,6 @@ import { getPouchDBErrorStatus } from "./schemas";
 import { type Result, ok, tryAsync } from "./result";
 
 /**
- * Extract SyncDocument fields from a PouchDB result object.
  * PouchDB returns documents with extra metadata (_attachments, _revs_info, etc.)
  * that are not part of our SyncDocument type. This function picks only the fields
  * we care about, avoiding type assertions.
@@ -17,7 +16,6 @@ function toSyncDocument(doc: {
   chunks?: string[] | undefined;
   mtime: number;
   size: number;
-  deleted?: boolean | undefined;
   hash: string;
   _conflicts?: string[] | undefined;
 }): SyncDocument {
@@ -29,15 +27,11 @@ function toSyncDocument(doc: {
     chunks: doc.chunks,
     mtime: doc.mtime,
     size: doc.size,
-    deleted: doc.deleted,
     hash: doc.hash,
     _conflicts: doc._conflicts,
   };
 }
 
-/**
- * Extract ChunkDocument fields from a PouchDB result object.
- */
 function toChunkDocument(doc: { _id: string; _rev?: string | undefined; data: string }): ChunkDocument {
   return {
     _id: doc._id,
@@ -47,17 +41,15 @@ function toChunkDocument(doc: { _id: string; _rev?: string | undefined; data: st
 }
 
 export class SyncDatabase {
-  /** Typed PouchDB instance for SyncDocument operations and replication. */
   private readonly local: PouchDB.Database<SyncDocument>;
 
   /**
-   * Typed PouchDB instance for ChunkDocument operations.
    * Points to the same underlying database as `local` — PouchDB is schemaless,
-   * so both instances share the same IndexedDB store.
+   * so both instances share the same IndexedDB store. Typed separately for
+   * ChunkDocument operations.
    */
   private readonly chunkDb: PouchDB.Database<ChunkDocument>;
 
-  private remote: PouchDB.Database<SyncDocument> | null = null;
   private replication: PouchDB.Replication.Sync<SyncDocument> | null = null;
 
   public constructor(dbName: string) {
@@ -66,8 +58,45 @@ export class SyncDatabase {
   }
 
   /**
+   * Puts a document with automatic conflict retry.
+   * On 409 conflict, fetches the latest rev and retries once.
+   * Spreads the doc instead of mutating it to avoid side effects.
+   */
+  private async putWithRetry<T extends { _id: string; _rev?: string | undefined }>(db: PouchDB.Database<T>, doc: T): Promise<Result<void>> {
+    const result = await tryAsync(async () => {
+      await db.put(doc);
+    });
+    if (result.ok) return ok(undefined);
+    if (getPouchDBErrorStatus(result.error) !== 409) return result;
+    const existing = await tryAsync(async () => db.get(doc._id));
+    if (!existing.ok) return existing;
+    const retryDoc = { ...doc, _rev: existing.value._rev };
+    return tryAsync(async () => {
+      await db.put(retryDoc);
+    });
+  }
+
+  /**
+   * Fetches a document by ID, returning null for 404s instead of erroring.
+   */
+  private async getOrNull(id: string, opts?: PouchDB.Core.GetOptions): Promise<Result<SyncDocument | null>> {
+    const result = await tryAsync(async () => this.local.get(id, opts));
+    if (result.ok) return ok(toSyncDocument(result.value));
+    if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
+    return result;
+  }
+
+  private static buildRemote(settings: SyncSettings, extra?: { skip_setup?: boolean }): PouchDB.Database<SyncDocument> {
+    const url = `${settings.serverUrl}/${settings.dbName}`;
+    const options: PouchDB.Configuration.RemoteDatabaseConfiguration = {
+      auth: { username: settings.username, password: settings.password },
+      ...extra,
+    };
+    return new PouchDB<SyncDocument>(url, options);
+  }
+
+  /**
    * Connect to remote CouchDB and start live replication.
-   * Returns a replication object that emits 'change', 'error', 'paused', 'active' events.
    * The onChange callback is called for each batch of remote changes.
    */
   public startSync(
@@ -77,24 +106,16 @@ export class SyncDatabase {
     onPaused: () => void,
     onActive: () => void,
   ): void {
-    // Stop any existing replication first
     this.stopSync();
 
-    const remoteUrl = `${settings.serverUrl}/${settings.dbName}`;
-    const remoteOptions: PouchDB.Configuration.RemoteDatabaseConfiguration = {
-      auth: {
-        username: settings.username,
-        password: settings.password,
-      },
-    };
-    this.remote = new PouchDB<SyncDocument>(remoteUrl, remoteOptions);
+    const remote = SyncDatabase.buildRemote(settings);
 
     const syncOptions: PouchDB.Replication.SyncOptions = {
       live: true,
       retry: true,
       batch_size: 50,
     };
-    this.replication = this.local.sync(this.remote, syncOptions);
+    this.replication = this.local.sync(remote, syncOptions);
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises -- .on() chains return the sync object (thenable) but we use it for event registration only
     this.replication
@@ -112,27 +133,17 @@ export class SyncDatabase {
       });
   }
 
-  /** Stop live replication */
   public stopSync(): void {
     if (this.replication !== null) {
       this.replication.cancel();
       this.replication = null;
     }
-    this.remote = null;
   }
 
-  /** Test connection to remote CouchDB. Returns true if successful. */
-  public async testConnection(settings: SyncSettings): Promise<boolean> {
+  /** Returns true if the remote CouchDB is reachable with the given credentials. */
+  public static async testConnection(settings: SyncSettings): Promise<boolean> {
     try {
-      const remoteUrl = `${settings.serverUrl}/${settings.dbName}`;
-      const remoteOptions: PouchDB.Configuration.RemoteDatabaseConfiguration = {
-        auth: {
-          username: settings.username,
-          password: settings.password,
-        },
-        skip_setup: true,
-      };
-      const testDb = new PouchDB<SyncDocument>(remoteUrl, remoteOptions);
+      const testDb = SyncDatabase.buildRemote(settings, { skip_setup: true });
       await testDb.info();
       return true;
     } catch {
@@ -140,31 +151,14 @@ export class SyncDatabase {
     }
   }
 
-  /** Get a document by ID (file path). Returns null if not found. */
   public async get(id: string): Promise<Result<SyncDocument | null>> {
-    const result = await tryAsync(async () => this.local.get(id, { conflicts: true }));
-    if (result.ok) return ok(toSyncDocument(result.value));
-    if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
-    return result;
+    return this.getOrNull(id, { conflicts: true });
   }
 
-  /** Put a document (create or update). Handles rev conflicts by fetching latest rev first. */
   public async put(doc: SyncDocument): Promise<Result<void>> {
-    const result = await tryAsync(async () => {
-      await this.local.put(doc);
-    });
-    if (result.ok) return ok(undefined);
-    if (getPouchDBErrorStatus(result.error) !== 409) return result;
-    // Conflict: fetch latest rev and retry
-    const existing = await tryAsync(async () => this.local.get(doc._id));
-    if (!existing.ok) return existing;
-    doc._rev = existing.value._rev;
-    return tryAsync(async () => {
-      await this.local.put(doc);
-    });
+    return this.putWithRetry(this.local, doc);
   }
 
-  /** Delete a document by marking it with _deleted flag */
   public async remove(id: string): Promise<Result<void>> {
     const getResult = await tryAsync(async () => this.local.get(id));
     if (!getResult.ok) {
@@ -176,14 +170,12 @@ export class SyncDatabase {
     });
   }
 
-  /** Bulk insert/update documents */
   public async bulkPut(docs: SyncDocument[]): Promise<Result<void>> {
     return tryAsync(async () => {
       await this.local.bulkDocs(docs);
     });
   }
 
-  /** Get all documents (for initial sync comparison) */
   public async getAllDocs(): Promise<Result<SyncDocument[]>> {
     return tryAsync(async () => {
       const result = await this.local.allDocs({ include_docs: true });
@@ -195,7 +187,6 @@ export class SyncDatabase {
     });
   }
 
-  /** Get all documents that have conflicts */
   public async getConflicts(): Promise<Result<SyncDocument[]>> {
     return tryAsync(async () => {
       const result = await this.local.allDocs({
@@ -211,38 +202,20 @@ export class SyncDatabase {
     });
   }
 
-  /** Get a specific revision of a document */
   public async getRevision(id: string, rev: string): Promise<Result<SyncDocument | null>> {
-    const result = await tryAsync(async () => this.local.get(id, { rev }));
-    if (result.ok) return ok(toSyncDocument(result.value));
-    if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
-    return result;
+    return this.getOrNull(id, { rev });
   }
 
-  /** Delete a specific conflict revision */
   public async removeConflict(id: string, rev: string): Promise<Result<void>> {
     return tryAsync(async () => {
       await this.local.remove(id, rev);
     });
   }
 
-  /** Put a chunk document */
   public async putChunk(chunk: ChunkDocument): Promise<Result<void>> {
-    const result = await tryAsync(async () => {
-      await this.chunkDb.put(chunk);
-    });
-    if (result.ok) return ok(undefined);
-    if (getPouchDBErrorStatus(result.error) !== 409) return result;
-    // Conflict: fetch latest rev and retry
-    const existing = await tryAsync(async () => this.chunkDb.get(chunk._id));
-    if (!existing.ok) return existing;
-    chunk._rev = existing.value._rev;
-    return tryAsync(async () => {
-      await this.chunkDb.put(chunk);
-    });
+    return this.putWithRetry(this.chunkDb, chunk);
   }
 
-  /** Get chunks for a parent document */
   public async getChunks(parentId: string): Promise<Result<ChunkDocument[]>> {
     return tryAsync(async () => {
       const result = await this.chunkDb.allDocs({
@@ -258,14 +231,12 @@ export class SyncDatabase {
     });
   }
 
-  /** Bulk put chunks */
   public async bulkPutChunks(chunks: ChunkDocument[]): Promise<Result<void>> {
     return tryAsync(async () => {
       await this.chunkDb.bulkDocs(chunks);
     });
   }
 
-  /** Destroy the local database */
   public async destroy(): Promise<Result<void>> {
     this.stopSync();
     return tryAsync(async () => {

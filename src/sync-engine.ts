@@ -7,8 +7,6 @@ import { RawSyncDocSchema } from "./schemas";
 import { type Result, ok, tryAsync, unwrapOr } from "./result";
 import { type SyncDocument, type SyncSettings, type SyncStatus, BATCH_SIZE, CHUNK_THRESHOLD, DEBOUNCE_MS } from "./types";
 
-// --- Utility: text file extensions ---
-
 const TEXT_EXTENSIONS = new Set([
   "md",
   "txt",
@@ -33,16 +31,14 @@ function isTextFile(path: string): boolean {
   return TEXT_EXTENSIONS.has(ext);
 }
 
-// --- Utility: ArrayBuffer <-> base64 ---
-
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    const byte = bytes[i];
-    if (byte !== undefined) binary += String.fromCharCode(byte);
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.byteLength; i += 8192) {
+    const chunk = bytes.subarray(i, Math.min(i + 8192, bytes.byteLength));
+    parts.push(String.fromCharCode(...chunk));
   }
-  return btoa(binary);
+  return btoa(parts.join(""));
 }
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -52,8 +48,6 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
   return bytes.buffer;
 }
-
-// --- Utility: generate conflict file path ---
 
 function conflictFilePath(originalPath: string): string {
   const now = new Date();
@@ -65,8 +59,6 @@ function conflictFilePath(originalPath: string): string {
   const ext = originalPath.slice(dotIdx);
   return `${base}.conflict-${timestamp}${ext}`;
 }
-
-// --- Utility: ensure parent folder exists ---
 
 async function ensureParentFolder(app: App, filePath: string): Promise<void> {
   const parts = filePath.split("/");
@@ -92,8 +84,6 @@ async function ensureParentFolder(app: App, filePath: string): Promise<void> {
   }
 }
 
-// --- SyncEngine ---
-
 export class SyncEngine {
   private db: SyncDatabase;
   private readonly app: App;
@@ -116,12 +106,10 @@ export class SyncEngine {
     this.db = new SyncDatabase(`simple-sync-${settings.dbName}`);
   }
 
-  /** Register a listener for status changes */
   public onStatusChange(listener: (status: SyncStatus) => void): void {
     this.statusListeners.push(listener);
   }
 
-  /** Start the sync engine. Performs initial sync, then starts live sync. */
   public async start(): Promise<Result<void>> {
     this.setStatus("initial-sync");
     const result = await this.initialSync();
@@ -135,42 +123,52 @@ export class SyncEngine {
     return ok(undefined);
   }
 
-  /** Stop the sync engine. Cancels replication and removes vault listeners. */
   public stop(): void {
-    // Cancel all debounce timers
     for (const timer of this.debounceTimers.values()) clearTimeout(timer);
 
     this.debounceTimers.clear();
 
-    // Unregister vault event listeners
     for (const ref of this.eventRefs) this.app.vault.offref(ref);
 
     this.eventRefs = [];
 
-    // Stop PouchDB replication
     this.db.stopSync();
 
     this.setStatus("idle");
   }
 
-  /** Update settings (e.g., after user changes them). Restarts sync. */
   public async updateSettings(settings: SyncSettings): Promise<void> {
     this.stop();
+    await this.db.destroy();
     this.settings = settings;
     this.db = new SyncDatabase(`simple-sync-${settings.dbName}`);
     if (!settings.paused) await this.start();
   }
 
-  /** Get current sync status */
   public getStatus(): SyncStatus {
     return this.status;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Echo guard
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Wraps a vault write in echo-prevention guards.
+   * Adds the path to the syncing set before the operation and removes it after,
+   * so vault event listeners ignore the resulting file-system events.
+   */
+  private async withEchoGuard(path: string, fn: () => Promise<void>): Promise<Result<void>> {
+    this.syncing.add(path);
+    const result = await tryAsync(fn);
+    this.syncing.delete(path);
+    return result;
   }
 
   // ---------------------------------------------------------------------------
   // Initial sync
   // ---------------------------------------------------------------------------
 
-  /** Perform initial sync between local vault and PouchDB */
   private async initialSync(): Promise<Result<void>> {
     const localFiles = this.app.vault.getFiles();
     const remoteResult = await this.db.getAllDocs();
@@ -203,8 +201,9 @@ export class SyncEngine {
     const total = localOnly.length + remoteOnly.length + both.length;
     let progress = 0;
 
+    const notice = new Notice("Syncing...", 0);
     const reportProgress = (): void => {
-      if (total > 0) new Notice(`Syncing ${String(progress)}/${String(total)} files...`);
+      if (total > 0) notice.setMessage(`Syncing ${String(progress)}/${String(total)} files...`);
     };
 
     // 1. Local-only files -> push to PouchDB in batches
@@ -230,10 +229,8 @@ export class SyncEngine {
     for (let i = 0; i < remoteOnly.length; i += BATCH_SIZE) {
       const batch = remoteOnly.slice(i, i + BATCH_SIZE);
       for (const doc of batch) {
-        this.syncing.add(doc._id);
-        const writeResult = await tryAsync(async () => this.writeToVault(doc));
+        const writeResult = await this.withEchoGuard(doc._id, async () => this.writeToVault(doc));
         if (!writeResult.ok) console.error(`[SyncEngine] Failed to write remote doc ${doc._id}:`, writeResult.error);
-        this.syncing.delete(doc._id);
       }
 
       progress += batch.length;
@@ -244,6 +241,9 @@ export class SyncEngine {
     for (let i = 0; i < both.length; i += BATCH_SIZE) {
       const batch = both.slice(i, i + BATCH_SIZE);
       for (const { file, doc } of batch) {
+        // Quick mtime check — skip file read if timestamps match
+        if (file.stat.mtime === doc.mtime) continue;
+
         const localDocResult = await tryAsync(async () => this.fileToDoc(file));
         if (!localDocResult.ok) {
           console.error(`[SyncEngine] Failed to reconcile ${file.path}:`, localDocResult.error);
@@ -251,9 +251,7 @@ export class SyncEngine {
         }
         const localDoc = localDocResult.value;
 
-        if (localDoc.hash === doc.hash)
-          // Identical — nothing to do
-          continue;
+        if (localDoc.hash === doc.hash) continue;
 
         // Different content: newer mtime wins
         if (localDoc.mtime >= doc.mtime) {
@@ -264,10 +262,8 @@ export class SyncEngine {
           if (!putResult.ok) console.error(`[SyncEngine] Failed to put ${file.path}:`, putResult.error);
         } else {
           // Remote is newer — write to vault
-          this.syncing.add(doc._id);
-          const writeResult = await tryAsync(async () => this.writeToVault(doc));
+          const writeResult = await this.withEchoGuard(doc._id, async () => this.writeToVault(doc));
           if (!writeResult.ok) console.error(`[SyncEngine] Failed to write remote doc ${doc._id}:`, writeResult.error);
-          this.syncing.delete(doc._id);
         }
       }
 
@@ -275,6 +271,7 @@ export class SyncEngine {
       reportProgress();
     }
 
+    notice.hide();
     if (total > 0) new Notice("Sync complete.");
     return ok(undefined);
   }
@@ -283,23 +280,18 @@ export class SyncEngine {
   // Live sync
   // ---------------------------------------------------------------------------
 
-  /** Start live replication and vault event listeners */
   private startLiveSync(): void {
-    // Register vault event listeners once the layout is ready
     this.app.workspace.onLayoutReady(() => {
-      // Create
       const createRef = this.app.vault.on("create", (file) => {
         if (file instanceof TFile && !this.syncing.has(file.path)) this.handleLocalChange(file);
       });
       this.eventRefs.push(createRef);
 
-      // Modify
       const modifyRef = this.app.vault.on("modify", (file) => {
         if (file instanceof TFile && !this.syncing.has(file.path)) this.handleLocalChange(file);
       });
       this.eventRefs.push(modifyRef);
 
-      // Delete
       const deleteRef = this.app.vault.on("delete", (file) => {
         if (!this.syncing.has(file.path))
           this.handleLocalDelete(file.path).catch((e: unknown) => {
@@ -308,7 +300,6 @@ export class SyncEngine {
       });
       this.eventRefs.push(deleteRef);
 
-      // Rename
       const renameRef = this.app.vault.on("rename", (file, oldPath) => {
         if (file instanceof TFile)
           this.handleLocalRename(file, oldPath).catch((e: unknown) => {
@@ -318,7 +309,6 @@ export class SyncEngine {
       this.eventRefs.push(renameRef);
     });
 
-    // Start PouchDB bidirectional replication
     this.db.startSync(
       this.settings,
       (change) => {
@@ -331,11 +321,9 @@ export class SyncEngine {
         this.setStatus("error");
       },
       () => {
-        // Paused (up-to-date or offline)
         if (this.status !== "error") this.setStatus("synced");
       },
       () => {
-        // Active (replication resumed)
         this.setStatus("syncing");
       },
     );
@@ -345,7 +333,7 @@ export class SyncEngine {
   // Local change handlers
   // ---------------------------------------------------------------------------
 
-  /** Handle a local vault file change (debounced) */
+  /** Debounces rapid vault events to avoid redundant syncs */
   private handleLocalChange(file: TFile): void {
     const existing = this.debounceTimers.get(file.path);
     if (existing !== undefined) clearTimeout(existing);
@@ -360,7 +348,6 @@ export class SyncEngine {
     this.debounceTimers.set(file.path, timer);
   }
 
-  /** Actually process a local file change after debounce */
   private async processLocalChange(file: TFile): Promise<void> {
     const docResult = await tryAsync(async () => this.fileToDoc(file));
     if (!docResult.ok) {
@@ -371,7 +358,7 @@ export class SyncEngine {
 
     // Check if the content actually changed
     const existing = unwrapOr(await this.db.get(file.path), null);
-    if (existing !== null && existing.hash === doc.hash) return; // No real change
+    if (existing !== null && existing.hash === doc.hash) return;
 
     // Carry forward the _rev so PouchDB can update
     if (existing?._rev !== undefined) doc._rev = existing._rev;
@@ -380,15 +367,11 @@ export class SyncEngine {
     if (!putResult.ok) console.error(`[SyncEngine] Failed to sync ${file.path}:`, putResult.error);
   }
 
-  /** Handle a local vault file deletion */
   private async handleLocalDelete(path: string): Promise<void> {
-    if (this.syncing.has(path)) return;
-
     const result = await this.db.remove(path);
     if (!result.ok) console.error(`[SyncEngine] Failed to delete ${path}:`, result.error);
   }
 
-  /** Handle a local vault file rename */
   private async handleLocalRename(file: TFile, oldPath: string): Promise<void> {
     const docResult = await tryAsync(async () => this.fileToDoc(file));
     if (!docResult.ok) {
@@ -407,9 +390,7 @@ export class SyncEngine {
   // Remote change handlers
   // ---------------------------------------------------------------------------
 
-  /** Handle remote changes received via PouchDB replication */
   private async handleRemoteChanges(change: PouchDB.Replication.SyncResult<SyncDocument>): Promise<void> {
-    // Only process incoming (pull) changes
     if (change.direction !== "pull") return;
 
     const docs = change.change.docs;
@@ -417,7 +398,6 @@ export class SyncEngine {
     for (const doc of docs) {
       const path = doc._id;
 
-      // Skip design documents
       if (path.startsWith("_design/")) continue;
 
       const parsed = RawSyncDocSchema.safeParse(doc);
@@ -426,16 +406,12 @@ export class SyncEngine {
       const rawDoc = parsed.data;
 
       if (rawDoc._deleted === true) {
-        // Remote deletion
-        this.syncing.add(path);
-        const deleteResult = await tryAsync(async () => {
+        const deleteResult = await this.withEchoGuard(path, async () => {
           const existingFile = this.app.vault.getAbstractFileByPath(path);
           if (existingFile !== null) await this.app.vault.adapter.remove(path);
         });
         if (!deleteResult.ok) console.error(`[SyncEngine] Failed to delete remote file ${path}:`, deleteResult.error);
-        this.syncing.delete(path);
       } else {
-        // Remote create/update — construct a proper SyncDocument from validated data
         const syncDoc: SyncDocument = {
           _id: rawDoc._id,
           content: rawDoc.content ?? "",
@@ -447,14 +423,11 @@ export class SyncEngine {
           _rev: rawDoc._rev,
           _conflicts: rawDoc._conflicts,
         };
-        this.syncing.add(path);
-        const writeResult = await tryAsync(async () => this.writeToVault(syncDoc));
+        const writeResult = await this.withEchoGuard(path, async () => this.writeToVault(syncDoc));
         if (!writeResult.ok) console.error(`[SyncEngine] Failed to apply remote change for ${path}:`, writeResult.error);
-        this.syncing.delete(path);
       }
     }
 
-    // After processing incoming changes, resolve any conflicts
     await this.resolveConflicts();
   }
 
@@ -462,7 +435,6 @@ export class SyncEngine {
   // Vault I/O
   // ---------------------------------------------------------------------------
 
-  /** Write a SyncDocument to the vault (handles both text and binary) */
   private async writeToVault(doc: SyncDocument): Promise<void> {
     const path = doc._id;
 
@@ -474,11 +446,9 @@ export class SyncEngine {
         await this.app.vault.create(path, doc.content);
       }
     } else {
-      // Binary file
       let buffer: ArrayBuffer;
 
       if (doc.chunks !== undefined && doc.chunks.length > 0) {
-        // Reassemble from chunks
         const chunkResult = await this.db.getChunks(doc._id);
         const chunkDocs = unwrapOr(chunkResult, []);
         const base64 = reassembleChunks(chunkDocs);
@@ -494,7 +464,6 @@ export class SyncEngine {
     }
   }
 
-  /** Read a vault file and create a SyncDocument */
   private async fileToDoc(file: TFile): Promise<SyncDocument> {
     const path = file.path;
 
@@ -518,7 +487,6 @@ export class SyncEngine {
     const base64 = arrayBufferToBase64(buffer);
 
     if (file.stat.size > CHUNK_THRESHOLD) {
-      // Large binary: split into chunks and store them
       const chunks = splitIntoChunks(path, base64);
       const bulkResult = await this.db.bulkPutChunks(chunks);
       if (!bulkResult.ok) console.error(`[SyncEngine] Failed to store chunks for ${path}:`, bulkResult.error);
@@ -534,7 +502,6 @@ export class SyncEngine {
       };
     }
 
-    // Small binary: store inline as base64
     return {
       _id: path,
       content: base64,
@@ -549,7 +516,6 @@ export class SyncEngine {
   // Conflict resolution
   // ---------------------------------------------------------------------------
 
-  /** Check for and resolve any conflicts */
   private async resolveConflicts(): Promise<void> {
     const conflictResult = await this.db.getConflicts();
     if (!conflictResult.ok) {
@@ -569,10 +535,8 @@ export class SyncEngine {
         const loserDoc = loserResult.value;
         if (loserDoc === null) continue;
 
-        // Attempt resolution (no ancestor available in MVP)
         const resolution = resolveConflict(null, winnerDoc, loserDoc);
 
-        // Update the winning doc with resolved content
         const resolved: SyncDocument = {
           ...winnerDoc,
           content: resolution.winnerContent,
@@ -589,11 +553,9 @@ export class SyncEngine {
           continue;
         }
 
-        // Remove the losing revision
         const removeResult = await this.db.removeConflict(winnerDoc._id, rev);
         if (!removeResult.ok) console.error(`[SyncEngine] Failed to remove conflict rev ${rev} for ${winnerDoc._id}:`, removeResult.error);
 
-        // If a conflict file is needed, create it in the vault
         if (resolution.needsConflictFile && resolution.loserContent !== null) {
           const cPath = conflictFilePath(winnerDoc._id);
           const createResult = await tryAsync(async () => {
@@ -604,10 +566,8 @@ export class SyncEngine {
         }
 
         // Write resolved content to vault
-        this.syncing.add(winnerDoc._id);
-        const writeResult = await tryAsync(async () => this.writeToVault(resolved));
+        const writeResult = await this.withEchoGuard(winnerDoc._id, async () => this.writeToVault(resolved));
         if (!writeResult.ok) console.error(`[SyncEngine] Failed to write resolved doc ${winnerDoc._id}:`, writeResult.error);
-        this.syncing.delete(winnerDoc._id);
       }
     }
   }
@@ -616,7 +576,6 @@ export class SyncEngine {
   // Status management
   // ---------------------------------------------------------------------------
 
-  /** Update the sync status and notify listeners */
   private setStatus(status: SyncStatus): void {
     if (this.status === status) return;
 

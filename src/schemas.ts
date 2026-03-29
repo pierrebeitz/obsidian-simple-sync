@@ -15,25 +15,6 @@ export function getPouchDBErrorStatus(err: unknown): number {
   return -1;
 }
 
-/** Schema for validating a replication change event direction */
-export const ReplicationChangeSchema = z.object({
-  direction: z.enum(["push", "pull"]),
-  change: z.object({
-    docs: z.array(z.record(z.string(), z.unknown())),
-  }),
-});
-
-/** Type derived from the replication change schema */
-export type ReplicationChange = z.infer<typeof ReplicationChangeSchema>;
-
-/** Safely parse a replication change event. Returns null if invalid. */
-export function parseReplicationChange(raw: unknown): ReplicationChange | null {
-  const parsed = ReplicationChangeSchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-
-  return null;
-}
-
 /** Schema for validating a raw document from PouchDB that might be a SyncDocument */
 export const RawSyncDocSchema = z.object({
   _id: z.string(),
