@@ -6,11 +6,11 @@
  * with the in-memory adapter (memdown-based) so tests run without any
  * native dependencies.
  */
-import PouchDB from 'pouchdb-core';
-import AdapterMemory from 'pouchdb-adapter-memory';
-import HttpAdapter from 'pouchdb-adapter-http';
-import Replication from 'pouchdb-replication';
-import Mapreduce from 'pouchdb-mapreduce';
+import PouchDB from "pouchdb-core";
+import AdapterMemory from "pouchdb-adapter-memory";
+import HttpAdapter from "pouchdb-adapter-http";
+import Replication from "pouchdb-replication";
+import Mapreduce from "pouchdb-mapreduce";
 
 PouchDB.plugin(AdapterMemory);
 PouchDB.plugin(HttpAdapter);
@@ -22,8 +22,8 @@ PouchDB.plugin(Mapreduce);
 const OrigPouchDB = PouchDB;
 
 function PatchedPouchDB(name: any, opts?: any) {
-  if (typeof name === 'string' && !name.startsWith('http')) {
-    opts = { adapter: 'memory', ...opts };
+  if (typeof name === "string" && !name.startsWith("http")) {
+    opts = { adapter: "memory", ...opts };
   }
   // @ts-expect-error — calling class as function via new
   return new OrigPouchDB(name, opts);

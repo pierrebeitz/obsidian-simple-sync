@@ -37,13 +37,7 @@ export const DEFAULT_SETTINGS: SyncSettings = {
 };
 
 /** Sync status for the status bar */
-export type SyncStatus =
-  | "idle"
-  | "syncing"
-  | "synced"
-  | "offline"
-  | "error"
-  | "initial-sync";
+export type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "error" | "initial-sync";
 
 /** Batch size for initial sync and bulk operations */
 export const BATCH_SIZE = 50;

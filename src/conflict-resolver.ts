@@ -1,5 +1,5 @@
-import DiffMatchPatch from 'diff-match-patch';
-import type { SyncDocument } from './types';
+import DiffMatchPatch from "diff-match-patch";
+import type { SyncDocument } from "./types";
 
 export interface MergeResult {
   merged: string;
@@ -22,11 +22,7 @@ export interface ResolvedConflict {
  * 3. If all patches apply cleanly, the merge is clean
  * 4. If some patches fail, the merge is dirty but still our best attempt
  */
-export function threeWayMerge(
-  ancestor: string,
-  versionA: string,
-  versionB: string,
-): MergeResult {
+export function threeWayMerge(ancestor: string, versionA: string, versionB: string): MergeResult {
   const dmp = new DiffMatchPatch();
 
   const diffs = dmp.diff_main(ancestor, versionB);
@@ -52,13 +48,9 @@ export function threeWayMerge(
  * For binary files:
  * - Always return newer version by mtime, no conflict file
  */
-export function resolveConflict(
-  ancestor: SyncDocument | null,
-  versionA: SyncDocument,
-  versionB: SyncDocument,
-): ResolvedConflict {
+export function resolveConflict(ancestor: SyncDocument | null, versionA: SyncDocument, versionB: SyncDocument): ResolvedConflict {
   // Binary files: newer wins, no merge possible
-  if (versionA.contentType === 'binary' || versionB.contentType === 'binary') {
+  if (versionA.contentType === "binary" || versionB.contentType === "binary") {
     const newer = versionA.mtime >= versionB.mtime ? versionA : versionB;
     return {
       winnerContent: newer.content,
@@ -69,19 +61,14 @@ export function resolveConflict(
 
   // Text files with ancestor: attempt three-way merge
   if (ancestor !== null) {
-    const { merged, clean } = threeWayMerge(
-      ancestor.content,
-      versionA.content,
-      versionB.content,
-    );
+    const { merged, clean } = threeWayMerge(ancestor.content, versionA.content, versionB.content);
 
-    if (clean) {
+    if (clean)
       return {
         winnerContent: merged,
         loserContent: null,
         needsConflictFile: false,
       };
-    }
 
     // Dirty merge: keep merged as winner, loser is the version that wasn't
     // used as the base for patching (versionB, since we patched onto versionA)
@@ -93,10 +80,7 @@ export function resolveConflict(
   }
 
   // Text files without ancestor: newer mtime wins, older becomes conflict file
-  const [newer, older] =
-    versionA.mtime >= versionB.mtime
-      ? [versionA, versionB]
-      : [versionB, versionA];
+  const [newer, older] = versionA.mtime >= versionB.mtime ? [versionA, versionB] : [versionB, versionA];
 
   return {
     winnerContent: newer.content,

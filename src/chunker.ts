@@ -6,10 +6,7 @@ export function chunkId(parentId: string, index: number): string {
 }
 
 /** Split a base64-encoded string into chunk documents */
-export function splitIntoChunks(
-  parentId: string,
-  base64Data: string,
-): ChunkDocument[] {
+export function splitIntoChunks(parentId: string, base64Data: string): ChunkDocument[] {
   const chunks: ChunkDocument[] = [];
   for (let i = 0; i < base64Data.length; i += CHUNK_SIZE) {
     const data = base64Data.slice(i, i + CHUNK_SIZE);

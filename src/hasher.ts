@@ -13,9 +13,8 @@ export async function computeHashBinary(buffer: ArrayBuffer): Promise<string> {
   let hex = "";
   for (let i = 0; i < 8; i++) {
     const byte = hashArray[i];
-    if (byte === undefined) {
-      break;
-    }
+    if (byte === undefined) break;
+
     hex += byte.toString(16).padStart(2, "0");
   }
   return hex;

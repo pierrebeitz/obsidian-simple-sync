@@ -1,27 +1,34 @@
-import { type App, TFile, Notice, type EventRef } from 'obsidian';
-import { SyncDatabase } from './db';
-import { computeHash, computeHashBinary } from './hasher';
-import { splitIntoChunks, reassembleChunks } from './chunker';
-import { resolveConflict } from './conflict-resolver';
-import { RawSyncDocSchema } from './schemas';
-import {
-  type SyncDocument,
-  type SyncSettings,
-  type SyncStatus,
-  BATCH_SIZE,
-  CHUNK_THRESHOLD,
-  DEBOUNCE_MS,
-} from './types';
+import { type App, TFile, Notice, type EventRef } from "obsidian";
+import { SyncDatabase } from "./db";
+import { computeHash, computeHashBinary } from "./hasher";
+import { splitIntoChunks, reassembleChunks } from "./chunker";
+import { resolveConflict } from "./conflict-resolver";
+import { RawSyncDocSchema } from "./schemas";
+import { type SyncDocument, type SyncSettings, type SyncStatus, BATCH_SIZE, CHUNK_THRESHOLD, DEBOUNCE_MS } from "./types";
 
 // --- Utility: text file extensions ---
 
 const TEXT_EXTENSIONS = new Set([
-  'md', 'txt', 'json', 'yaml', 'yml', 'css', 'js', 'ts',
-  'jsx', 'tsx', 'html', 'xml', 'csv', 'svg', 'mmd', 'canvas',
+  "md",
+  "txt",
+  "json",
+  "yaml",
+  "yml",
+  "css",
+  "js",
+  "ts",
+  "jsx",
+  "tsx",
+  "html",
+  "xml",
+  "csv",
+  "svg",
+  "mmd",
+  "canvas",
 ]);
 
 function isTextFile(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return TEXT_EXTENSIONS.has(ext);
 }
 
@@ -29,12 +36,10 @@ function isTextFile(path: string): boolean {
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  let binary = '';
+  let binary = "";
   for (let i = 0; i < bytes.byteLength; i++) {
     const byte = bytes[i];
-    if (byte !== undefined) {
-      binary += String.fromCharCode(byte);
-    }
+    if (byte !== undefined) binary += String.fromCharCode(byte);
   }
   return btoa(binary);
 }
@@ -42,9 +47,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
   return bytes.buffer;
 }
 
@@ -52,11 +56,10 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 function conflictFilePath(originalPath: string): string {
   const now = new Date();
-  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const dotIdx = originalPath.lastIndexOf('.');
-  if (dotIdx === -1) {
-    return `${originalPath}.conflict-${timestamp}`;
-  }
+  const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const dotIdx = originalPath.lastIndexOf(".");
+  if (dotIdx === -1) return `${originalPath}.conflict-${timestamp}`;
+
   const base = originalPath.slice(0, dotIdx);
   const ext = originalPath.slice(dotIdx);
   return `${base}.conflict-${timestamp}${ext}`;
@@ -65,34 +68,29 @@ function conflictFilePath(originalPath: string): string {
 // --- Utility: ensure parent folder exists ---
 
 async function ensureParentFolder(app: App, filePath: string): Promise<void> {
-  const parts = filePath.split('/');
-  if (parts.length <= 1) {
-    return;
-  } // file at vault root
+  const parts = filePath.split("/");
+  if (parts.length <= 1) return;
+  // file at vault root
 
   // Build folder path by removing the file name
-  const folderPath = parts.slice(0, -1).join('/');
+  const folderPath = parts.slice(0, -1).join("/");
   const existing = app.vault.getAbstractFileByPath(folderPath);
-  if (existing !== null) {
-    return;
-  }
+  if (existing !== null) return;
 
   // Create all ancestor folders iteratively
-  let current = '';
+  let current = "";
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    if (part === undefined) {
-      continue;
-    }
-    current = current !== '' ? `${current}/${part}` : part;
+    if (part === undefined) continue;
+
+    current = current !== "" ? `${current}/${part}` : part;
     const folder = app.vault.getAbstractFileByPath(current);
-    if (folder === null) {
+    if (folder === null)
       try {
         await app.vault.createFolder(current);
       } catch {
         // Folder may have been created concurrently — that's fine
       }
-    }
   }
 }
 
@@ -102,7 +100,7 @@ export class SyncEngine {
   private db: SyncDatabase;
   private readonly app: App;
   private settings: SyncSettings;
-  private status: SyncStatus = 'idle';
+  private status: SyncStatus = "idle";
   private readonly statusListeners: ((status: SyncStatus) => void)[] = [];
 
   /** Echo prevention: tracks paths currently being written by remote sync */
@@ -128,14 +126,14 @@ export class SyncEngine {
   /** Start the sync engine. Performs initial sync, then starts live sync. */
   public async start(): Promise<void> {
     try {
-      this.setStatus('initial-sync');
+      this.setStatus("initial-sync");
       await this.initialSync();
       this.startLiveSync();
-      this.setStatus('synced');
+      this.setStatus("synced");
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('[SyncEngine] Failed to start:', err);
-      this.setStatus('error');
+      console.error("[SyncEngine] Failed to start:", err);
+      this.setStatus("error");
       throw err;
     }
   }
@@ -143,21 +141,19 @@ export class SyncEngine {
   /** Stop the sync engine. Cancels replication and removes vault listeners. */
   public stop(): void {
     // Cancel all debounce timers
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
-    }
+    for (const timer of this.debounceTimers.values()) clearTimeout(timer);
+
     this.debounceTimers.clear();
 
     // Unregister vault event listeners
-    for (const ref of this.eventRefs) {
-      this.app.vault.offref(ref);
-    }
+    for (const ref of this.eventRefs) this.app.vault.offref(ref);
+
     this.eventRefs = [];
 
     // Stop PouchDB replication
     this.db.stopSync();
 
-    this.setStatus('idle');
+    this.setStatus("idle");
   }
 
   /** Update settings (e.g., after user changes them). Restarts sync. */
@@ -165,9 +161,7 @@ export class SyncEngine {
     this.stop();
     this.settings = settings;
     this.db = new SyncDatabase(`simple-sync-${settings.dbName}`);
-    if (!settings.paused) {
-      await this.start();
-    }
+    if (!settings.paused) await this.start();
   }
 
   /** Get current sync status */
@@ -186,14 +180,10 @@ export class SyncEngine {
 
     // Build lookup maps
     const localMap = new Map<string, TFile>();
-    for (const file of localFiles) {
-      localMap.set(file.path, file);
-    }
+    for (const file of localFiles) localMap.set(file.path, file);
 
     const remoteMap = new Map<string, SyncDocument>();
-    for (const doc of remoteDocs) {
-      remoteMap.set(doc._id, doc);
-    }
+    for (const doc of remoteDocs) remoteMap.set(doc._id, doc);
 
     // Categorize
     const localOnly: TFile[] = [];
@@ -202,33 +192,24 @@ export class SyncEngine {
 
     for (const file of localFiles) {
       const doc = remoteMap.get(file.path);
-      if (doc !== undefined) {
-        both.push({ file, doc });
-      } else {
-        localOnly.push(file);
-      }
+      if (doc !== undefined) both.push({ file, doc });
+      else localOnly.push(file);
     }
 
-    for (const doc of remoteDocs) {
-      if (!localMap.has(doc._id)) {
-        remoteOnly.push(doc);
-      }
-    }
+    for (const doc of remoteDocs) if (!localMap.has(doc._id)) remoteOnly.push(doc);
 
     const total = localOnly.length + remoteOnly.length + both.length;
     let progress = 0;
 
     const reportProgress = (): void => {
-      if (total > 0) {
-        new Notice(`Syncing ${String(progress)}/${String(total)} files...`);
-      }
+      if (total > 0) new Notice(`Syncing ${String(progress)}/${String(total)} files...`);
     };
 
     // 1. Local-only files -> push to PouchDB in batches
     for (let i = 0; i < localOnly.length; i += BATCH_SIZE) {
       const batch = localOnly.slice(i, i + BATCH_SIZE);
       const docs: SyncDocument[] = [];
-      for (const file of batch) {
+      for (const file of batch)
         try {
           const doc = await this.fileToDoc(file);
           docs.push(doc);
@@ -236,10 +217,9 @@ export class SyncEngine {
           // eslint-disable-next-line no-console
           console.error(`[SyncEngine] Failed to read local file ${file.path}:`, err);
         }
-      }
-      if (docs.length > 0) {
-        await this.db.bulkPut(docs);
-      }
+
+      if (docs.length > 0) await this.db.bulkPut(docs);
+
       progress += batch.length;
       reportProgress();
     }
@@ -247,7 +227,7 @@ export class SyncEngine {
     // 2. Remote-only docs -> write to vault in batches
     for (let i = 0; i < remoteOnly.length; i += BATCH_SIZE) {
       const batch = remoteOnly.slice(i, i + BATCH_SIZE);
-      for (const doc of batch) {
+      for (const doc of batch)
         try {
           this.syncing.add(doc._id);
           await this.writeToVault(doc);
@@ -257,7 +237,7 @@ export class SyncEngine {
         } finally {
           this.syncing.delete(doc._id);
         }
-      }
+
       progress += batch.length;
       reportProgress();
     }
@@ -265,21 +245,19 @@ export class SyncEngine {
     // 3. Files that exist on both sides — compare hashes
     for (let i = 0; i < both.length; i += BATCH_SIZE) {
       const batch = both.slice(i, i + BATCH_SIZE);
-      for (const { file, doc } of batch) {
+      for (const { file, doc } of batch)
         try {
           const localDoc = await this.fileToDoc(file);
 
-          if (localDoc.hash === doc.hash) {
+          if (localDoc.hash === doc.hash)
             // Identical — nothing to do
             continue;
-          }
 
           // Different content: newer mtime wins
           if (localDoc.mtime >= doc.mtime) {
             // Local is newer — push to PouchDB
-            if (doc._rev !== undefined) {
-              localDoc._rev = doc._rev;
-            }
+            if (doc._rev !== undefined) localDoc._rev = doc._rev;
+
             await this.db.put(localDoc);
           } else {
             // Remote is newer — write to vault
@@ -294,14 +272,12 @@ export class SyncEngine {
           // eslint-disable-next-line no-console
           console.error(`[SyncEngine] Failed to reconcile ${file.path}:`, err);
         }
-      }
+
       progress += batch.length;
       reportProgress();
     }
 
-    if (total > 0) {
-      new Notice('Sync complete.');
-    }
+    if (total > 0) new Notice("Sync complete.");
   }
 
   // ---------------------------------------------------------------------------
@@ -313,40 +289,34 @@ export class SyncEngine {
     // Register vault event listeners once the layout is ready
     this.app.workspace.onLayoutReady(() => {
       // Create
-      const createRef = this.app.vault.on('create', (file) => {
-        if (file instanceof TFile && !this.syncing.has(file.path)) {
-          this.handleLocalChange(file);
-        }
+      const createRef = this.app.vault.on("create", (file) => {
+        if (file instanceof TFile && !this.syncing.has(file.path)) this.handleLocalChange(file);
       });
       this.eventRefs.push(createRef);
 
       // Modify
-      const modifyRef = this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && !this.syncing.has(file.path)) {
-          this.handleLocalChange(file);
-        }
+      const modifyRef = this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && !this.syncing.has(file.path)) this.handleLocalChange(file);
       });
       this.eventRefs.push(modifyRef);
 
       // Delete
-      const deleteRef = this.app.vault.on('delete', (file) => {
-        if (!this.syncing.has(file.path)) {
+      const deleteRef = this.app.vault.on("delete", (file) => {
+        if (!this.syncing.has(file.path))
           this.handleLocalDelete(file.path).catch((err: unknown) => {
             // eslint-disable-next-line no-console
             console.error(`[SyncEngine] Failed to handle delete for ${file.path}:`, err);
           });
-        }
       });
       this.eventRefs.push(deleteRef);
 
       // Rename
-      const renameRef = this.app.vault.on('rename', (file, oldPath) => {
-        if (file instanceof TFile) {
+      const renameRef = this.app.vault.on("rename", (file, oldPath) => {
+        if (file instanceof TFile)
           this.handleLocalRename(file, oldPath).catch((err: unknown) => {
             // eslint-disable-next-line no-console
             console.error(`[SyncEngine] Failed to handle rename for ${file.path}:`, err);
           });
-        }
       });
       this.eventRefs.push(renameRef);
     });
@@ -357,23 +327,21 @@ export class SyncEngine {
       (change) => {
         this.handleRemoteChanges(change).catch((err: unknown) => {
           // eslint-disable-next-line no-console
-          console.error('[SyncEngine] Failed to handle remote changes:', err);
+          console.error("[SyncEngine] Failed to handle remote changes:", err);
         });
       },
       (err) => {
         // eslint-disable-next-line no-console
-        console.error('[SyncEngine] Replication error:', err);
-        this.setStatus('error');
+        console.error("[SyncEngine] Replication error:", err);
+        this.setStatus("error");
       },
       () => {
         // Paused (up-to-date or offline)
-        if (this.status !== 'error') {
-          this.setStatus('synced');
-        }
+        if (this.status !== "error") this.setStatus("synced");
       },
       () => {
         // Active (replication resumed)
-        this.setStatus('syncing');
+        this.setStatus("syncing");
       },
     );
   }
@@ -385,9 +353,7 @@ export class SyncEngine {
   /** Handle a local vault file change (debounced) */
   private handleLocalChange(file: TFile): void {
     const existing = this.debounceTimers.get(file.path);
-    if (existing !== undefined) {
-      clearTimeout(existing);
-    }
+    if (existing !== undefined) clearTimeout(existing);
 
     const timer = setTimeout(() => {
       this.debounceTimers.delete(file.path);
@@ -407,16 +373,10 @@ export class SyncEngine {
 
       // Check if the content actually changed
       const existing = await this.db.get(file.path);
-      if (existing?.hash === doc.hash) {
-        return; // No real change
-      }
+      if (existing?.hash === doc.hash) return; // No real change
 
       // Carry forward the _rev so PouchDB can update
-      if (existing !== null) {
-        if (existing._rev !== undefined) {
-          doc._rev = existing._rev;
-        }
-      }
+      if (existing !== null) if (existing._rev !== undefined) doc._rev = existing._rev;
 
       await this.db.put(doc);
     } catch (err) {
@@ -427,9 +387,7 @@ export class SyncEngine {
 
   /** Handle a local vault file deletion */
   private async handleLocalDelete(path: string): Promise<void> {
-    if (this.syncing.has(path)) {
-      return;
-    }
+    if (this.syncing.has(path)) return;
 
     try {
       await this.db.remove(path);
@@ -459,13 +417,9 @@ export class SyncEngine {
   // ---------------------------------------------------------------------------
 
   /** Handle remote changes received via PouchDB replication */
-  private async handleRemoteChanges(
-    change: PouchDB.Replication.SyncResult<SyncDocument>,
-  ): Promise<void> {
+  private async handleRemoteChanges(change: PouchDB.Replication.SyncResult<SyncDocument>): Promise<void> {
     // Only process incoming (pull) changes
-    if (change.direction !== 'pull') {
-      return;
-    }
+    if (change.direction !== "pull") return;
 
     const docs = change.change.docs;
 
@@ -473,15 +427,12 @@ export class SyncEngine {
       const path = doc._id;
 
       // Skip design documents
-      if (path.startsWith('_design/')) {
-        continue;
-      }
+      if (path.startsWith("_design/")) continue;
 
       try {
         const parsed = RawSyncDocSchema.safeParse(doc);
-        if (!parsed.success) {
-          continue;
-        }
+        if (!parsed.success) continue;
+
         const rawDoc = parsed.data;
 
         if (rawDoc._deleted === true) {
@@ -489,17 +440,26 @@ export class SyncEngine {
           this.syncing.add(path);
           try {
             const existing = this.app.vault.getAbstractFileByPath(path);
-            if (existing !== null) {
-              await this.app.vault.adapter.remove(path);
-            }
+            if (existing !== null) await this.app.vault.adapter.remove(path);
           } finally {
             this.syncing.delete(path);
           }
         } else {
-          // Remote create/update
+          // Remote create/update — construct a proper SyncDocument from validated data
+          const syncDoc: SyncDocument = {
+            _id: rawDoc._id,
+            content: rawDoc.content ?? "",
+            contentType: rawDoc.contentType ?? "text",
+            chunks: rawDoc.chunks,
+            mtime: rawDoc.mtime ?? 0,
+            size: rawDoc.size ?? 0,
+            hash: rawDoc.hash ?? "",
+            _rev: rawDoc._rev,
+            _conflicts: rawDoc._conflicts,
+          };
           this.syncing.add(path);
           try {
-            await this.writeToVault(doc as SyncDocument);
+            await this.writeToVault(syncDoc);
           } finally {
             this.syncing.delete(path);
           }
@@ -522,11 +482,10 @@ export class SyncEngine {
   private async writeToVault(doc: SyncDocument): Promise<void> {
     const path = doc._id;
 
-    if (doc.contentType === 'text') {
+    if (doc.contentType === "text") {
       const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing !== null && existing instanceof TFile) {
-        await this.app.vault.modify(existing, doc.content);
-      } else {
+      if (existing !== null && existing instanceof TFile) await this.app.vault.modify(existing, doc.content);
+      else {
         await ensureParentFolder(this.app, path);
         await this.app.vault.create(path, doc.content);
       }
@@ -539,14 +498,11 @@ export class SyncEngine {
         const chunkDocs = await this.db.getChunks(doc._id);
         const base64 = reassembleChunks(chunkDocs);
         buffer = base64ToArrayBuffer(base64);
-      } else {
-        buffer = base64ToArrayBuffer(doc.content);
-      }
+      } else buffer = base64ToArrayBuffer(doc.content);
 
       const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing !== null && existing instanceof TFile) {
-        await this.app.vault.modifyBinary(existing, buffer);
-      } else {
+      if (existing !== null && existing instanceof TFile) await this.app.vault.modifyBinary(existing, buffer);
+      else {
         await ensureParentFolder(this.app, path);
         await this.app.vault.createBinary(path, buffer);
       }
@@ -564,7 +520,7 @@ export class SyncEngine {
       return {
         _id: path,
         content,
-        contentType: 'text',
+        contentType: "text",
         mtime: file.stat.mtime,
         size: file.stat.size,
         hash,
@@ -583,8 +539,8 @@ export class SyncEngine {
 
       return {
         _id: path,
-        content: '',
-        contentType: 'binary',
+        content: "",
+        contentType: "binary",
         chunks: chunks.map((c) => c._id),
         mtime: file.stat.mtime,
         size: file.stat.size,
@@ -596,7 +552,7 @@ export class SyncEngine {
     return {
       _id: path,
       content: base64,
-      contentType: 'binary',
+      contentType: "binary",
       mtime: file.stat.mtime,
       size: file.stat.size,
       hash,
@@ -614,19 +570,17 @@ export class SyncEngine {
       conflicted = await this.db.getConflicts();
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('[SyncEngine] Failed to fetch conflicts:', err);
+      console.error("[SyncEngine] Failed to fetch conflicts:", err);
       return;
     }
 
     for (const winnerDoc of conflicted) {
       const conflictRevs = winnerDoc._conflicts ?? [];
 
-      for (const rev of conflictRevs) {
+      for (const rev of conflictRevs)
         try {
           const loserDoc = await this.db.getRevision(winnerDoc._id, rev);
-          if (loserDoc === null) {
-            continue;
-          }
+          if (loserDoc === null) continue;
 
           // Attempt resolution (no ancestor available in MVP)
           const result = resolveConflict(null, winnerDoc, loserDoc);
@@ -637,9 +591,10 @@ export class SyncEngine {
             content: result.winnerContent,
             mtime: Date.now(),
           };
-          resolved.hash = resolved.contentType === 'text'
-            ? await computeHash(resolved.content)
-            : await computeHashBinary(base64ToArrayBuffer(resolved.content));
+          resolved.hash =
+            resolved.contentType === "text"
+              ? await computeHash(resolved.content)
+              : await computeHashBinary(base64ToArrayBuffer(resolved.content));
 
           await this.db.put(resolved);
 
@@ -667,12 +622,8 @@ export class SyncEngine {
           }
         } catch (err) {
           // eslint-disable-next-line no-console
-          console.error(
-            `[SyncEngine] Failed to resolve conflict for ${winnerDoc._id} rev ${rev}:`,
-            err,
-          );
+          console.error(`[SyncEngine] Failed to resolve conflict for ${winnerDoc._id} rev ${rev}:`, err);
         }
-      }
     }
   }
 
@@ -682,16 +633,14 @@ export class SyncEngine {
 
   /** Update the sync status and notify listeners */
   private setStatus(status: SyncStatus): void {
-    if (this.status === status) {
-      return;
-    }
+    if (this.status === status) return;
+
     this.status = status;
-    for (const listener of this.statusListeners) {
+    for (const listener of this.statusListeners)
       try {
         listener(status);
       } catch {
         // Don't let a bad listener break the engine
       }
-    }
   }
 }

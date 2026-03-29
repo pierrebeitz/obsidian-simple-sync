@@ -1,9 +1,20 @@
 import { Plugin, Notice } from "obsidian";
+import { z } from "zod";
 import { SyncEngine } from "./sync-engine";
 import { SyncSettingTab } from "./settings";
 import { StatusBar } from "./status";
 import { SyncDatabase } from "./db";
 import { type SyncSettings, DEFAULT_SETTINGS } from "./types";
+
+const SettingsSchema = z
+  .object({
+    serverUrl: z.string(),
+    username: z.string(),
+    password: z.string(),
+    dbName: z.string(),
+    paused: z.boolean(),
+  })
+  .partial();
 
 export default class SimpleSyncPlugin extends Plugin {
   public settings: SyncSettings = DEFAULT_SETTINGS;
@@ -34,9 +45,7 @@ export default class SimpleSyncPlugin extends Plugin {
         this.saveSettings()
           .then(() => {
             this.restartSync();
-            new Notice(
-              this.settings.paused ? "Sync paused" : "Sync resumed",
-            );
+            new Notice(this.settings.paused ? "Sync paused" : "Sync resumed");
           })
           .catch((err: unknown) => {
             // eslint-disable-next-line no-console
@@ -46,7 +55,7 @@ export default class SimpleSyncPlugin extends Plugin {
     });
 
     // Start sync if settings are configured
-    if (this.settings.serverUrl !== "" && !this.settings.paused) {
+    if (this.settings.serverUrl !== "" && !this.settings.paused)
       // Delay start slightly to let Obsidian finish loading
       this.registerInterval(
         window.setTimeout(() => {
@@ -56,7 +65,6 @@ export default class SimpleSyncPlugin extends Plugin {
           });
         }, 2000),
       );
-    }
   }
 
   public override onunload(): void {
@@ -64,18 +72,20 @@ export default class SimpleSyncPlugin extends Plugin {
     this.engine = null;
     this.statusBar?.destroy();
     this.statusBar = null;
-    if (this.restartTimer !== null) {
-      clearTimeout(this.restartTimer);
-    }
+    if (this.restartTimer !== null) clearTimeout(this.restartTimer);
   }
 
   public async loadSettings(): Promise<void> {
     const raw: unknown = await this.loadData();
-    const loaded =
-      typeof raw === "object" && raw !== null
-        ? (raw as Partial<SyncSettings>)
-        : {};
-    this.settings = { ...DEFAULT_SETTINGS, ...loaded };
+    const parsed = SettingsSchema.safeParse(raw);
+    const overrides = parsed.success ? parsed.data : {};
+    this.settings = {
+      serverUrl: overrides.serverUrl ?? DEFAULT_SETTINGS.serverUrl,
+      username: overrides.username ?? DEFAULT_SETTINGS.username,
+      password: overrides.password ?? DEFAULT_SETTINGS.password,
+      dbName: overrides.dbName ?? DEFAULT_SETTINGS.dbName,
+      paused: overrides.paused ?? DEFAULT_SETTINGS.paused,
+    };
   }
 
   public async saveSettings(): Promise<void> {
@@ -84,9 +94,8 @@ export default class SimpleSyncPlugin extends Plugin {
 
   /** Start or restart sync. Debounced to avoid rapid restarts from settings changes. */
   public restartSync(): void {
-    if (this.restartTimer !== null) {
-      clearTimeout(this.restartTimer);
-    }
+    if (this.restartTimer !== null) clearTimeout(this.restartTimer);
+
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
       this.startSync().catch((err: unknown) => {

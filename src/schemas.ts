@@ -10,9 +10,8 @@ export const PouchDBErrorSchema = z.object({
 /** Extract a status code from an unknown PouchDB error. Returns -1 if unrecognized. */
 export function getPouchDBErrorStatus(err: unknown): number {
   const parsed = PouchDBErrorSchema.safeParse(err);
-  if (parsed.success) {
-    return parsed.data.status;
-  }
+  if (parsed.success) return parsed.data.status;
+
   return -1;
 }
 
@@ -30,9 +29,8 @@ export type ReplicationChange = z.infer<typeof ReplicationChangeSchema>;
 /** Safely parse a replication change event. Returns null if invalid. */
 export function parseReplicationChange(raw: unknown): ReplicationChange | null {
   const parsed = ReplicationChangeSchema.safeParse(raw);
-  if (parsed.success) {
-    return parsed.data;
-  }
+  if (parsed.success) return parsed.data;
+
   return null;
 }
 

@@ -1,14 +1,67 @@
-import PouchDB from 'pouchdb-browser';
-import type { SyncDocument, ChunkDocument, SyncSettings } from './types';
-import { getPouchDBErrorStatus } from './schemas';
+import PouchDB from "pouchdb-browser";
+import type { SyncDocument, ChunkDocument, SyncSettings } from "./types";
+import { getPouchDBErrorStatus } from "./schemas";
+
+/**
+ * Extract SyncDocument fields from a PouchDB result object.
+ * PouchDB returns documents with extra metadata (_attachments, _revs_info, etc.)
+ * that are not part of our SyncDocument type. This function picks only the fields
+ * we care about, avoiding type assertions.
+ */
+function toSyncDocument(doc: {
+  _id: string;
+  _rev?: string | undefined;
+  content: string;
+  contentType: "text" | "binary";
+  chunks?: string[] | undefined;
+  mtime: number;
+  size: number;
+  deleted?: boolean | undefined;
+  hash: string;
+  _conflicts?: string[] | undefined;
+}): SyncDocument {
+  return {
+    _id: doc._id,
+    _rev: doc._rev,
+    content: doc.content,
+    contentType: doc.contentType,
+    chunks: doc.chunks,
+    mtime: doc.mtime,
+    size: doc.size,
+    deleted: doc.deleted,
+    hash: doc.hash,
+    _conflicts: doc._conflicts,
+  };
+}
+
+/**
+ * Extract ChunkDocument fields from a PouchDB result object.
+ */
+function toChunkDocument(doc: { _id: string; _rev?: string | undefined; data: string }): ChunkDocument {
+  return {
+    _id: doc._id,
+    _rev: doc._rev,
+    data: doc.data,
+  };
+}
 
 export class SyncDatabase {
+  /** Typed PouchDB instance for SyncDocument operations and replication. */
   private readonly local: PouchDB.Database<SyncDocument>;
+
+  /**
+   * Typed PouchDB instance for ChunkDocument operations.
+   * Points to the same underlying database as `local` — PouchDB is schemaless,
+   * so both instances share the same IndexedDB store.
+   */
+  private readonly chunkDb: PouchDB.Database<ChunkDocument>;
+
   private remote: PouchDB.Database<SyncDocument> | null = null;
   private replication: PouchDB.Replication.Sync<SyncDocument> | null = null;
 
   public constructor(dbName: string) {
     this.local = new PouchDB<SyncDocument>(dbName);
+    this.chunkDb = new PouchDB<ChunkDocument>(dbName);
   }
 
   /**
@@ -27,32 +80,33 @@ export class SyncDatabase {
     this.stopSync();
 
     const remoteUrl = `${settings.serverUrl}/${settings.dbName}`;
-this.remote = new PouchDB<SyncDocument>(remoteUrl, {
+    const remoteOptions: PouchDB.Configuration.RemoteDatabaseConfiguration = {
       auth: {
         username: settings.username,
         password: settings.password,
       },
-    } as PouchDB.Configuration.RemoteDatabaseConfiguration);
+    };
+    this.remote = new PouchDB<SyncDocument>(remoteUrl, remoteOptions);
 
-    this.replication = this.local.sync(this.remote, {
+    const syncOptions: PouchDB.Replication.SyncOptions = {
       live: true,
       retry: true,
       batch_size: 50,
-      conflicts: true,
-    } as PouchDB.Replication.SyncOptions);
+    };
+    this.replication = this.local.sync(this.remote, syncOptions);
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises -- .on() chains return the sync object (thenable) but we use it for event registration only
     this.replication
-      .on('change', (info) => {
+      .on("change", (info) => {
         onChange(info);
       })
-      .on('error', (err) => {
-        onError(err as Error);
+      .on("error", (err: unknown) => {
+        onError(err instanceof Error ? err : new Error(String(err)));
       })
-      .on('paused', () => {
+      .on("paused", () => {
         onPaused();
       })
-      .on('active', () => {
+      .on("active", () => {
         onActive();
       });
   }
@@ -70,13 +124,14 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
   public async testConnection(settings: SyncSettings): Promise<boolean> {
     try {
       const remoteUrl = `${settings.serverUrl}/${settings.dbName}`;
-    const testDb = new PouchDB<SyncDocument>(remoteUrl, {
+      const remoteOptions: PouchDB.Configuration.RemoteDatabaseConfiguration = {
         auth: {
           username: settings.username,
           password: settings.password,
         },
         skip_setup: true,
-      } as PouchDB.Configuration.RemoteDatabaseConfiguration);
+      };
+      const testDb = new PouchDB<SyncDocument>(remoteUrl, remoteOptions);
       await testDb.info();
       return true;
     } catch {
@@ -88,11 +143,10 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
   public async get(id: string): Promise<SyncDocument | null> {
     try {
       const doc = await this.local.get(id, { conflicts: true });
-      return doc as SyncDocument;
+      return toSyncDocument(doc);
     } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 404) {
-        return null;
-      }
+      if (getPouchDBErrorStatus(err) === 404) return null;
+
       throw err;
     }
   }
@@ -107,9 +161,7 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
         const existing = await this.local.get(doc._id);
         doc._rev = existing._rev;
         await this.local.put(doc);
-      } else {
-        throw err;
-      }
+      } else throw err;
     }
   }
 
@@ -119,10 +171,10 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
       const doc = await this.local.get(id);
       await this.local.remove(doc);
     } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 404) {
+      if (getPouchDBErrorStatus(err) === 404)
         // Already deleted, nothing to do
         return;
-      }
+
       throw err;
     }
   }
@@ -135,9 +187,11 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
   /** Get all documents (for initial sync comparison) */
   public async getAllDocs(): Promise<SyncDocument[]> {
     const result = await this.local.allDocs({ include_docs: true });
-    return result.rows
-      .filter((row) => row.doc !== undefined && !row.id.startsWith('_design/'))
-      .map((row) => row.doc as SyncDocument);
+    return result.rows.flatMap((row) => {
+      if (row.doc === undefined || row.id.startsWith("_design/")) return [];
+
+      return [toSyncDocument(row.doc)];
+    });
   }
 
   /** Get all documents that have conflicts */
@@ -146,24 +200,22 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
       include_docs: true,
       conflicts: true,
     });
-    return result.rows
-      .filter((row) => {
-        if (row.doc === undefined) { return false; }
-        const doc = row.doc as SyncDocument;
-        return doc._conflicts !== undefined && doc._conflicts.length > 0;
-      })
-      .map((row) => row.doc as SyncDocument);
+    return result.rows.flatMap((row) => {
+      if (row.doc === undefined) return [];
+      if (row.doc._conflicts === undefined || row.doc._conflicts.length === 0) return [];
+
+      return [toSyncDocument(row.doc)];
+    });
   }
 
   /** Get a specific revision of a document */
   public async getRevision(id: string, rev: string): Promise<SyncDocument | null> {
     try {
       const doc = await this.local.get(id, { rev });
-      return doc as SyncDocument;
+      return toSyncDocument(doc);
     } catch (err: unknown) {
-      if (getPouchDBErrorStatus(err) === 404) {
-        return null;
-      }
+      if (getPouchDBErrorStatus(err) === 404) return null;
+
       throw err;
     }
   }
@@ -175,37 +227,34 @@ this.remote = new PouchDB<SyncDocument>(remoteUrl, {
 
   /** Put a chunk document */
   public async putChunk(chunk: ChunkDocument): Promise<void> {
-const db = this.local as unknown as PouchDB.Database<ChunkDocument>;
     try {
-      await db.put(chunk);
+      await this.chunkDb.put(chunk);
     } catch (err: unknown) {
       if (getPouchDBErrorStatus(err) === 409) {
-        const existing = await db.get(chunk._id);
+        const existing = await this.chunkDb.get(chunk._id);
         chunk._rev = existing._rev;
-        await db.put(chunk);
-      } else {
-        throw err;
-      }
+        await this.chunkDb.put(chunk);
+      } else throw err;
     }
   }
 
   /** Get chunks for a parent document */
   public async getChunks(parentId: string): Promise<ChunkDocument[]> {
-const db = this.local as unknown as PouchDB.Database<ChunkDocument>;
-    const result = await db.allDocs({
+    const result = await this.chunkDb.allDocs({
       include_docs: true,
       startkey: `chunk:${parentId}:`,
       endkey: `chunk:${parentId}:\uffff`,
     });
-    return result.rows
-      .filter((row) => row.doc !== undefined)
-      .map((row) => row.doc as ChunkDocument);
+    return result.rows.flatMap((row) => {
+      if (row.doc === undefined) return [];
+
+      return [toChunkDocument(row.doc)];
+    });
   }
 
   /** Bulk put chunks */
   public async bulkPutChunks(chunks: ChunkDocument[]): Promise<void> {
-const db = this.local as unknown as PouchDB.Database<ChunkDocument>;
-    await db.bulkDocs(chunks);
+    await this.chunkDb.bulkDocs(chunks);
   }
 
   /** Destroy the local database */
