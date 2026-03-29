@@ -50,7 +50,7 @@ export class SyncDatabase {
    */
   private readonly chunkDb: PouchDB.Database<ChunkDocument>;
 
-  private replication: PouchDB.Replication.Sync<SyncDocument> | null = null;
+  private replication: { cancel: () => void } | null = null;
 
   public constructor(dbName: string) {
     this.local = new PouchDB<SyncDocument>(dbName);
@@ -68,7 +68,7 @@ export class SyncDatabase {
     });
     if (result.ok) return ok(undefined);
     if (getPouchDBErrorStatus(result.error) !== 409) return result;
-    const existing = await tryAsync(async () => db.get(doc._id));
+    const existing = await tryAsync(async () => await db.get(doc._id));
     if (!existing.ok) return existing;
     const retryDoc = { ...doc, _rev: existing.value._rev };
     return tryAsync(async () => {
@@ -80,7 +80,7 @@ export class SyncDatabase {
    * Fetches a document by ID, returning null for 404s instead of erroring.
    */
   private async getOrNull(id: string, opts?: PouchDB.Core.GetOptions): Promise<Result<SyncDocument | null>> {
-    const result = await tryAsync(async () => this.local.get(id, opts));
+    const result = await tryAsync(async () => await this.local.get(id, opts));
     if (result.ok) return ok(toSyncDocument(result.value));
     if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
     return result;
@@ -115,10 +115,10 @@ export class SyncDatabase {
       retry: true,
       batch_size: BATCH_SIZE,
     };
-    this.replication = this.local.sync(remote, syncOptions);
+    const sync = this.local.sync(remote, syncOptions);
+    this.replication = sync;
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises -- .on() chains return the sync object (thenable) but we use it for event registration only
-    this.replication
+    sync
       .on("change", (info) => {
         onChange(info);
       })
@@ -130,6 +130,9 @@ export class SyncDatabase {
       })
       .on("active", () => {
         onActive();
+      })
+      .catch((err: unknown) => {
+        onError(err instanceof Error ? err : new Error(String(err)));
       });
   }
 
@@ -175,7 +178,7 @@ export class SyncDatabase {
   }
 
   public async remove(id: string): Promise<Result<void>> {
-    const getResult = await tryAsync(async () => this.local.get(id));
+    const getResult = await tryAsync(async () => await this.local.get(id));
     if (!getResult.ok) {
       if (getPouchDBErrorStatus(getResult.error) === 404) return ok(undefined);
       return getResult;
@@ -231,7 +234,7 @@ export class SyncDatabase {
     const opts: PouchDB.Core.GetOptions = { revs: true };
     if (rev !== undefined) opts.rev = rev;
 
-    const result = await tryAsync(async () => this.local.get(id, opts));
+    const result = await tryAsync(async () => await this.local.get(id, opts));
     if (!result.ok) {
       if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
       return result;

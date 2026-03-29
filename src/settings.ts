@@ -56,7 +56,7 @@ export class SyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Simple Sync Settings" });
+    new Setting(containerEl).setName("Simple Sync").setHeading();
 
     new Setting(containerEl)
       .setName("Connection URL")
@@ -113,7 +113,7 @@ export class SyncSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Database Name")
+      .setName("Database name")
       .setDesc("Name of the CouchDB database")
       .addText((text) =>
         text
@@ -126,7 +126,7 @@ export class SyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Test Connection")
+      .setName("Test connection")
       .setDesc("Verify the server and database are accessible")
       .addButton((button) =>
         button.setButtonText("Test").onClick(async () => {
@@ -138,7 +138,7 @@ export class SyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Pause Sync")
+      .setName("Pause sync")
       .setDesc("Temporarily stop syncing")
       .addToggle((toggle) =>
         toggle.setValue(this.syncPlugin.settings.paused).onChange(async (value) => {
