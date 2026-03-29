@@ -186,6 +186,36 @@ That's it. No folder exclusions, no sync interval config, no advanced options.
 7. Both devices converge to identical content
 ```
 
+### Initial Sync
+
+Three scenarios when plugin first connects:
+
+**Scenario 1: Existing vault, fresh server (most common)**
+- Plugin detects empty remote DB
+- Batch-scans local vault files (50 at a time)
+- Bulk-writes to PouchDB via `bulkDocs`
+- PouchDB replicates to CouchDB
+- Progress notice: "Uploading 342/500 files..."
+
+**Scenario 2: Fresh vault, existing server (adding second device)**
+- Plugin detects empty local PouchDB, populated remote
+- PouchDB replication pulls all docs
+- Sync engine writes each doc to vault (with `syncing` flag to suppress echo)
+- Progress notice: "Downloading 342/500 files..."
+
+**Scenario 3: Both sides have content (re-linking)**
+- Pull remote `_all_docs` with hashes
+- Diff local vault against remote:
+  - Local-only → push to PouchDB
+  - Remote-only → pull to vault
+  - Both exist, same hash → skip
+  - Both exist, different hash → newer `mtime` wins, loser saved as `.sync-conflict` file
+- After diff resolves, start live replication
+
+All scenarios end by starting PouchDB live replication with `{live: true, retry: true}`.
+
+Batching (50 files/batch) prevents UI blocking. A notice shows progress throughout.
+
 ## Technical Constraints
 
 - **No Node.js APIs**: Everything through Obsidian's Vault API and PouchDB's HTTP replication
