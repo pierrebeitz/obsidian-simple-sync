@@ -206,6 +206,36 @@ export class SyncDatabase {
     return this.getOrNull(id, { rev });
   }
 
+  /**
+   * Fetches a document along with its revision history.
+   * Pass `rev` to fetch the revision tree for a specific revision.
+   * Returns `null` for 404s. The `revisions` array contains full rev strings
+   * (e.g. "3-abc123") ordered newest-to-oldest.
+   */
+  public async getWithRevisions(id: string, rev?: string): Promise<Result<{ doc: SyncDocument; revisions: string[] } | null>> {
+    const opts: PouchDB.Core.GetOptions = { revs: true };
+    if (rev !== undefined) opts.rev = rev;
+
+    const result = await tryAsync(async () => this.local.get(id, opts));
+    if (!result.ok) {
+      if (getPouchDBErrorStatus(result.error) === 404) return ok(null);
+      return result;
+    }
+
+    const raw = result.value;
+    const doc = toSyncDocument(raw);
+
+    const revsField = raw._revisions;
+    const revisions: string[] = [];
+    if (revsField !== undefined)
+      for (let i = 0; i < revsField.ids.length; i++) {
+        const revId = revsField.ids[i];
+        if (revId !== undefined) revisions.push(`${String(revsField.start - i)}-${revId}`);
+      }
+
+    return ok({ doc, revisions });
+  }
+
   public async removeConflict(id: string, rev: string): Promise<Result<void>> {
     return tryAsync(async () => {
       await this.local.remove(id, rev);
@@ -234,6 +264,15 @@ export class SyncDatabase {
   public async bulkPutChunks(chunks: ChunkDocument[]): Promise<Result<void>> {
     return tryAsync(async () => {
       await this.chunkDb.bulkDocs(chunks);
+    });
+  }
+
+  public async removeChunks(parentId: string): Promise<Result<void>> {
+    const chunksResult = await this.getChunks(parentId);
+    if (!chunksResult.ok) return chunksResult;
+
+    return tryAsync(async () => {
+      for (const chunk of chunksResult.value) if (chunk._rev !== undefined) await this.chunkDb.remove(chunk._id, chunk._rev);
     });
   }
 

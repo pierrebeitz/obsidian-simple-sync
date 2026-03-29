@@ -357,6 +357,10 @@ export class SyncEngine {
   private async handleLocalDelete(path: string): Promise<void> {
     const result = await this.db.remove(path);
     if (!result.ok) console.error(`[SyncEngine] Failed to delete ${path}:`, result.error);
+
+    // Clean up any associated chunks
+    const chunkResult = await this.db.removeChunks(path);
+    if (!chunkResult.ok) console.error(`[SyncEngine] Failed to remove chunks for ${path}:`, chunkResult.error);
   }
 
   private async handleLocalRename(file: TFile, oldPath: string): Promise<void> {
@@ -371,6 +375,10 @@ export class SyncEngine {
 
     const removeResult = await this.db.remove(oldPath);
     if (!removeResult.ok) console.error(`[SyncEngine] Failed to remove ${oldPath}:`, removeResult.error);
+
+    // Clean up chunks associated with the old path
+    const chunkResult = await this.db.removeChunks(oldPath);
+    if (!chunkResult.ok) console.error(`[SyncEngine] Failed to remove chunks for ${oldPath}:`, chunkResult.error);
   }
 
   // ---------------------------------------------------------------------------
@@ -398,6 +406,10 @@ export class SyncEngine {
           if (existingFile !== null) await this.app.vault.adapter.remove(path);
         });
         if (!deleteResult.ok) console.error(`[SyncEngine] Failed to delete remote file ${path}:`, deleteResult.error);
+
+        // Clean up any associated chunks
+        const chunkResult = await this.db.removeChunks(path);
+        if (!chunkResult.ok) console.error(`[SyncEngine] Failed to remove chunks for ${path}:`, chunkResult.error);
       } else {
         const syncDoc: SyncDocument = {
           _id: rawDoc._id,
@@ -474,6 +486,10 @@ export class SyncEngine {
     const base64 = arrayBufferToBase64(buffer);
 
     if (file.stat.size > CHUNK_THRESHOLD) {
+      // Clean up old chunks before writing new ones
+      const removeResult = await this.db.removeChunks(path);
+      if (!removeResult.ok) console.error(`[SyncEngine] Failed to remove old chunks for ${path}:`, removeResult.error);
+
       const chunks = splitIntoChunks(path, base64);
       const bulkResult = await this.db.bulkPutChunks(chunks);
       if (!bulkResult.ok) console.error(`[SyncEngine] Failed to store chunks for ${path}:`, bulkResult.error);
@@ -522,7 +538,23 @@ export class SyncEngine {
         const loserDoc = loserResult.value;
         if (loserDoc === null) continue;
 
-        const resolution = resolveConflict(null, winnerDoc, loserDoc);
+        // Try to find the common ancestor for three-way merge
+        let ancestor: SyncDocument | null = null;
+
+        const winnerRevs = await this.db.getWithRevisions(winnerDoc._id);
+        const loserRevs = await this.db.getWithRevisions(winnerDoc._id, rev);
+
+        if (winnerRevs.ok && winnerRevs.value !== null && loserRevs.ok && loserRevs.value !== null) {
+          const winnerSet = new Set(winnerRevs.value.revisions);
+          const commonRev = loserRevs.value.revisions.find((r) => winnerSet.has(r));
+
+          if (commonRev !== undefined) {
+            const ancestorResult = await this.db.getRevision(winnerDoc._id, commonRev);
+            ancestor = unwrapOr(ancestorResult, null);
+          }
+        }
+
+        const resolution = resolveConflict(ancestor, winnerDoc, loserDoc);
 
         const resolved: SyncDocument = {
           ...winnerDoc,
