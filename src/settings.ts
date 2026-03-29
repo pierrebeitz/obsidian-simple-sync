@@ -56,11 +56,9 @@ export class SyncSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName("Simple Sync").setHeading();
-
     new Setting(containerEl)
       .setName("Connection URL")
-      .setDesc("Paste a full URL to fill all fields: https://user:pass@host:port/dbname")
+      .setDesc("Paste a full URL to auto-fill all fields below")
       .addText((text) =>
         text
           .setPlaceholder("https://admin:password@your-server:5984/obsidian-sync")
@@ -80,7 +78,7 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Server URL")
-      .setDesc("CouchDB server URL")
+      .setDesc("Address of your CouchDB server")
       .addText((text) =>
         text
           .setPlaceholder("https://your-server:5984")
@@ -93,7 +91,7 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Username")
-      .setDesc("CouchDB username")
+      .setDesc("Username for CouchDB authentication")
       .addText((text) =>
         text.setValue(this.syncPlugin.settings.username).onChange(async (value) => {
           this.syncPlugin.settings.username = value;
@@ -103,7 +101,7 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Password")
-      .setDesc("CouchDB password")
+      .setDesc("Password for CouchDB authentication")
       .addText((text) => {
         text.setValue(this.syncPlugin.settings.password).onChange(async (value) => {
           this.syncPlugin.settings.password = value;
@@ -114,7 +112,7 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Database name")
-      .setDesc("Name of the CouchDB database")
+      .setDesc("Database on your CouchDB server")
       .addText((text) =>
         text
           .setPlaceholder("obsidian-sync")
