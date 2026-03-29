@@ -1,7 +1,7 @@
 import PouchDB from "pouchdb-browser";
 import { type SyncDocument, type ChunkDocument, type SyncSettings, BATCH_SIZE } from "./types";
 import { getPouchDBErrorStatus } from "./schemas";
-import { type Result, ok, tryAsync } from "./result";
+import { type Result, ok, tryAsync, toError } from "./result";
 
 /**
  * PouchDB returns documents with extra metadata (_attachments, _revs_info, etc.)
@@ -123,7 +123,7 @@ export class SyncDatabase {
         onChange(info);
       })
       .on("error", (err: unknown) => {
-        onError(err instanceof Error ? err : new Error(String(err)));
+        onError(toError(err));
       })
       .on("paused", () => {
         onPaused();
@@ -131,8 +131,9 @@ export class SyncDatabase {
       .on("active", () => {
         onActive();
       })
-      .catch((err: unknown) => {
-        onError(err instanceof Error ? err : new Error(String(err)));
+      .catch(() => {
+        // Rejections are already surfaced via the "error" event above.
+        // This .catch() exists only to prevent an unhandled-promise-rejection.
       });
   }
 
