@@ -259,7 +259,6 @@ export class SyncEngine {
     }
 
     notice.hide();
-    if (total > 0) new Notice("Sync complete.");
     return ok(undefined);
   }
 
