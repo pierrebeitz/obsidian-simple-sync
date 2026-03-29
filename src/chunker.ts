@@ -19,8 +19,7 @@ export function splitIntoChunks(parentId: string, base64Data: string): ChunkDocu
 }
 
 /** Reassemble chunk documents back into a single base64 string.
- *  Chunks must be passed in order (sorted by _id). */
+ *  Chunks are expected in _id order (as returned by PouchDB range queries). */
 export function reassembleChunks(chunks: ChunkDocument[]): string {
-  const sorted = [...chunks].sort((a, b) => a._id.localeCompare(b._id));
-  return sorted.map((c) => c.data).join("");
+  return chunks.map((c) => c.data).join("");
 }

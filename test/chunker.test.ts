@@ -40,13 +40,10 @@ describe("splitIntoChunks", () => {
 });
 
 describe("reassembleChunks", () => {
-  it("handles chunks in wrong order by sorting on _id", () => {
+  it("reassembles chunks in given order", () => {
     const data = "a".repeat(CHUNK_SIZE) + "b".repeat(CHUNK_SIZE) + "c".repeat(100);
     const chunks = splitIntoChunks("order.md", data);
-
-    // Reverse the order to simulate out-of-order chunks
-    const reversed = [...chunks].reverse();
-    const reassembled = reassembleChunks(reversed);
+    const reassembled = reassembleChunks(chunks);
     expect(reassembled).toBe(data);
   });
 });

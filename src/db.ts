@@ -1,5 +1,5 @@
 import PouchDB from "pouchdb-browser";
-import type { SyncDocument, ChunkDocument, SyncSettings } from "./types";
+import { type SyncDocument, type ChunkDocument, type SyncSettings, BATCH_SIZE } from "./types";
 import { getPouchDBErrorStatus } from "./schemas";
 import { type Result, ok, tryAsync } from "./result";
 
@@ -113,7 +113,7 @@ export class SyncDatabase {
     const syncOptions: PouchDB.Replication.SyncOptions = {
       live: true,
       retry: true,
-      batch_size: 50,
+      batch_size: BATCH_SIZE,
     };
     this.replication = this.local.sync(remote, syncOptions);
 
@@ -180,7 +180,7 @@ export class SyncDatabase {
     return tryAsync(async () => {
       const result = await this.local.allDocs({ include_docs: true });
       return result.rows.flatMap((row) => {
-        if (row.doc === undefined || row.id.startsWith("_design/")) return [];
+        if (row.doc === undefined || row.id.startsWith("_design/") || row.id.startsWith("chunk:")) return [];
 
         return [toSyncDocument(row.doc)];
       });

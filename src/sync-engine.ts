@@ -63,7 +63,6 @@ function conflictFilePath(originalPath: string): string {
 async function ensureParentFolder(app: App, filePath: string): Promise<void> {
   const parts = filePath.split("/");
   if (parts.length <= 1) return;
-  // file at vault root
 
   // Build folder path by removing the file name
   const folderPath = parts.slice(0, -1).join("/");
@@ -85,9 +84,9 @@ async function ensureParentFolder(app: App, filePath: string): Promise<void> {
 }
 
 export class SyncEngine {
-  private db: SyncDatabase;
+  private readonly db: SyncDatabase;
   private readonly app: App;
-  private settings: SyncSettings;
+  private readonly settings: SyncSettings;
   private status: SyncStatus = "idle";
   private readonly statusListeners: ((status: SyncStatus) => void)[] = [];
 
@@ -135,18 +134,6 @@ export class SyncEngine {
     this.db.stopSync();
 
     this.setStatus("idle");
-  }
-
-  public async updateSettings(settings: SyncSettings): Promise<void> {
-    this.stop();
-    await this.db.destroy();
-    this.settings = settings;
-    this.db = new SyncDatabase(`simple-sync-${settings.dbName}`);
-    if (!settings.paused) await this.start();
-  }
-
-  public getStatus(): SyncStatus {
-    return this.status;
   }
 
   // ---------------------------------------------------------------------------
