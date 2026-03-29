@@ -16,6 +16,13 @@
     "builtin-modules": "^4.0.0",
     "esbuild": "^0.24.0",
     "obsidian": "latest",
+    "pouchdb": "^9.0.0",
+    "pouchdb-adapter-http": "^9.0.0",
+    "pouchdb-adapter-memory": "^9.0.0",
+    "pouchdb-core": "^9.0.0",
+    "pouchdb-find": "^9.0.0",
+    "pouchdb-mapreduce": "^9.0.0",
+    "pouchdb-replication": "^9.0.0",
     "tslib": "^2.8.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"

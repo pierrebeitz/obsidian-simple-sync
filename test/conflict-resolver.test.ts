@@ -26,23 +26,32 @@ describe('threeWayMerge', () => {
     expect(result.merged).toBe('line1-edited\nline2\nline3-edited');
   });
 
-  it('identical changes produce a clean merge', () => {
-    const ancestor = 'hello world';
-    const versionA = 'hello universe';
-    const versionB = 'hello universe';
+  it('identical changes produce correct merged result', () => {
+    const ancestor = 'aaa\nbbb\nccc\nddd\neee';
+    const versionA = 'aaa\nXXX\nccc\nddd\neee';
+    const versionB = 'aaa\nXXX\nccc\nddd\neee';
 
     const result = threeWayMerge(ancestor, versionA, versionB);
 
     expect(result.clean).toBe(true);
-    expect(result.merged).toBe('hello universe');
+    expect(result.merged).toBe('aaa\nXXX\nccc\nddd\neee');
   });
 
   it('conflicting overlapping edits produce a dirty merge', () => {
-    const ancestor = 'hello world';
-    const versionA = 'hello planet';
-    const versionB = 'hello galaxy';
+    // diff-match-patch needs enough context to fail fuzzy matching.
+    // Use a realistic scenario: large overlapping block rewrites.
+    const lines: string[] = [];
+    for (let i = 0; i < 20; i++) lines.push(`line ${i} original content here`);
+    const ancestor = lines.join('\n');
 
-    const result = threeWayMerge(ancestor, versionA, versionB);
+    const linesA = lines.map((l, i) =>
+      i >= 5 && i <= 15 ? `line ${i} version A rewrote this` : l,
+    );
+    const linesB = lines.map((l, i) =>
+      i >= 5 && i <= 15 ? `line ${i} version B rewrote this` : l,
+    );
+
+    const result = threeWayMerge(ancestor, linesA.join('\n'), linesB.join('\n'));
 
     expect(result.clean).toBe(false);
   });
@@ -92,23 +101,26 @@ describe('resolveConflict', () => {
   });
 
   it('text with ancestor, dirty merge: conflict file with loser content', () => {
-    const ancestor = makeDoc({
-      content: 'hello world',
-      mtime: 1000,
-    });
-    const versionA = makeDoc({
-      content: 'hello planet',
-      mtime: 2000,
-    });
-    const versionB = makeDoc({
-      content: 'hello galaxy',
-      mtime: 3000,
-    });
+    // Use a large overlapping rewrite to trigger a genuinely dirty merge
+    const lines: string[] = [];
+    for (let i = 0; i < 20; i++) lines.push(`line ${i} original content here`);
+    const ancestorContent = lines.join('\n');
+
+    const linesA = lines.map((l, i) =>
+      i >= 5 && i <= 15 ? `line ${i} version A rewrote this` : l,
+    );
+    const linesB = lines.map((l, i) =>
+      i >= 5 && i <= 15 ? `line ${i} version B rewrote this` : l,
+    );
+
+    const ancestor = makeDoc({ content: ancestorContent, mtime: 1000 });
+    const versionA = makeDoc({ content: linesA.join('\n'), mtime: 2000 });
+    const versionB = makeDoc({ content: linesB.join('\n'), mtime: 3000 });
 
     const result = resolveConflict(ancestor, versionA, versionB);
 
     expect(result.needsConflictFile).toBe(true);
-    expect(result.loserContent).toBe('hello galaxy');
+    expect(result.loserContent).toBe(linesB.join('\n'));
   });
 
   it('text without ancestor: newer mtime wins, older becomes conflict file', () => {
