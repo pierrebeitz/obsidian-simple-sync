@@ -131,7 +131,7 @@ export class SyncEngine {
       this.startLiveSync();
       this.setStatus("synced");
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error("[SyncEngine] Failed to start:", err);
       this.setStatus("error");
       throw err;
@@ -214,7 +214,7 @@ export class SyncEngine {
           const doc = await this.fileToDoc(file);
           docs.push(doc);
         } catch (err) {
-          // eslint-disable-next-line no-console
+           
           console.error(`[SyncEngine] Failed to read local file ${file.path}:`, err);
         }
 
@@ -232,7 +232,7 @@ export class SyncEngine {
           this.syncing.add(doc._id);
           await this.writeToVault(doc);
         } catch (err) {
-          // eslint-disable-next-line no-console
+           
           console.error(`[SyncEngine] Failed to write remote doc ${doc._id}:`, err);
         } finally {
           this.syncing.delete(doc._id);
@@ -269,7 +269,7 @@ export class SyncEngine {
             }
           }
         } catch (err) {
-          // eslint-disable-next-line no-console
+           
           console.error(`[SyncEngine] Failed to reconcile ${file.path}:`, err);
         }
 
@@ -304,7 +304,7 @@ export class SyncEngine {
       const deleteRef = this.app.vault.on("delete", (file) => {
         if (!this.syncing.has(file.path))
           this.handleLocalDelete(file.path).catch((err: unknown) => {
-            // eslint-disable-next-line no-console
+             
             console.error(`[SyncEngine] Failed to handle delete for ${file.path}:`, err);
           });
       });
@@ -314,7 +314,7 @@ export class SyncEngine {
       const renameRef = this.app.vault.on("rename", (file, oldPath) => {
         if (file instanceof TFile)
           this.handleLocalRename(file, oldPath).catch((err: unknown) => {
-            // eslint-disable-next-line no-console
+             
             console.error(`[SyncEngine] Failed to handle rename for ${file.path}:`, err);
           });
       });
@@ -326,12 +326,12 @@ export class SyncEngine {
       this.settings,
       (change) => {
         this.handleRemoteChanges(change).catch((err: unknown) => {
-          // eslint-disable-next-line no-console
+           
           console.error("[SyncEngine] Failed to handle remote changes:", err);
         });
       },
       (err) => {
-        // eslint-disable-next-line no-console
+         
         console.error("[SyncEngine] Replication error:", err);
         this.setStatus("error");
       },
@@ -358,7 +358,7 @@ export class SyncEngine {
     const timer = setTimeout(() => {
       this.debounceTimers.delete(file.path);
       this.processLocalChange(file).catch((err: unknown) => {
-        // eslint-disable-next-line no-console
+         
         console.error(`[SyncEngine] Failed to process local change for ${file.path}:`, err);
       });
     }, DEBOUNCE_MS);
@@ -380,7 +380,7 @@ export class SyncEngine {
 
       await this.db.put(doc);
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error(`[SyncEngine] Failed to process local change for ${file.path}:`, err);
     }
   }
@@ -392,7 +392,7 @@ export class SyncEngine {
     try {
       await this.db.remove(path);
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error(`[SyncEngine] Failed to process local delete for ${path}:`, err);
     }
   }
@@ -407,7 +407,7 @@ export class SyncEngine {
       // Remove doc at old path
       await this.db.remove(oldPath);
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error(`[SyncEngine] Failed to process rename ${oldPath} -> ${file.path}:`, err);
     }
   }
@@ -465,7 +465,7 @@ export class SyncEngine {
           }
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
+         
         console.error(`[SyncEngine] Failed to apply remote change for ${path}:`, err);
       }
     }
@@ -569,7 +569,7 @@ export class SyncEngine {
     try {
       conflicted = await this.db.getConflicts();
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error("[SyncEngine] Failed to fetch conflicts:", err);
       return;
     }
@@ -608,7 +608,7 @@ export class SyncEngine {
               await ensureParentFolder(this.app, conflictPath);
               await this.app.vault.create(conflictPath, result.loserContent);
             } catch (err) {
-              // eslint-disable-next-line no-console
+               
               console.error(`[SyncEngine] Failed to create conflict file ${conflictPath}:`, err);
             }
           }
@@ -621,7 +621,7 @@ export class SyncEngine {
             this.syncing.delete(winnerDoc._id);
           }
         } catch (err) {
-          // eslint-disable-next-line no-console
+           
           console.error(`[SyncEngine] Failed to resolve conflict for ${winnerDoc._id} rev ${rev}:`, err);
         }
     }

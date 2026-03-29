@@ -48,7 +48,7 @@ export default class SimpleSyncPlugin extends Plugin {
             new Notice(this.settings.paused ? "Sync paused" : "Sync resumed");
           })
           .catch((err: unknown) => {
-            // eslint-disable-next-line no-console
+             
             console.error("[SimpleSync] Failed to save settings:", err);
           });
       },
@@ -60,7 +60,7 @@ export default class SimpleSyncPlugin extends Plugin {
       this.registerInterval(
         window.setTimeout(() => {
           this.startSync().catch((err: unknown) => {
-            // eslint-disable-next-line no-console
+             
             console.error("[SimpleSync] Failed to start sync:", err);
           });
         }, 2000),
@@ -99,7 +99,7 @@ export default class SimpleSyncPlugin extends Plugin {
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
       this.startSync().catch((err: unknown) => {
-        // eslint-disable-next-line no-console
+         
         console.error("[SimpleSync] Failed to start sync:", err);
       });
     }, 500);
@@ -123,7 +123,7 @@ export default class SimpleSyncPlugin extends Plugin {
       this.statusBar?.update("initial-sync");
       await this.engine.start();
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error("[SimpleSync] Failed to start sync:", err);
       new Notice("Sync failed to start. Check your settings.");
       this.statusBar?.update("error");

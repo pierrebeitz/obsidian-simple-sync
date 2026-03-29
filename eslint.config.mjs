@@ -103,7 +103,6 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "@typescript-eslint/no-non-null-assertion": "error",
 
-      "no-console": "warn",
       "eqeqeq": ["error", "always"],
       "no-param-reassign": "error",
       "no-implicit-coercion": "error",

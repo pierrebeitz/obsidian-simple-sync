@@ -9,8 +9,9 @@
     "typecheck": "tsgo --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
+    "test:e2e": "vitest run test/e2e/",
     "test:watch": "vitest",
-    "check": "tsgo --noEmit && eslint src/ && vitest run"
+    "check": "concurrently -n types,lint,test --kill-others-on-fail \"tsgo --noEmit\" \"eslint src/\" \"vitest run\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -19,6 +20,7 @@
     "@types/pouchdb": "^6.4.2",
     "@typescript/native-preview": "^7.0.0-dev.20260329.1",
     "builtin-modules": "^4.0.0",
+    "concurrently": "^9.2.1",
     "esbuild": "^0.24.0",
     "eslint": "^10.1.0",
     "obsidian": "latest",
