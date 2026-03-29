@@ -68,7 +68,7 @@ export function resolveConflict(
   }
 
   // Text files with ancestor: attempt three-way merge
-  if (ancestor) {
+  if (ancestor !== null) {
     const { merged, clean } = threeWayMerge(
       ancestor.content,
       versionA.content,

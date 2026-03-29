@@ -3,15 +3,15 @@ import { SyncEngine } from "./sync-engine";
 import { SyncSettingTab } from "./settings";
 import { StatusBar } from "./status";
 import { SyncDatabase } from "./db";
-import { SyncSettings, DEFAULT_SETTINGS } from "./types";
+import { type SyncSettings, DEFAULT_SETTINGS } from "./types";
 
 export default class SimpleSyncPlugin extends Plugin {
-  settings: SyncSettings = DEFAULT_SETTINGS;
+  public settings: SyncSettings = DEFAULT_SETTINGS;
   private engine: SyncEngine | null = null;
   private statusBar: StatusBar | null = null;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
-  async onload() {
+  public override async onload(): Promise<void> {
     await this.loadSettings();
 
     this.statusBar = new StatusBar(this);
@@ -21,70 +21,87 @@ export default class SimpleSyncPlugin extends Plugin {
     this.addCommand({
       id: "force-sync",
       name: "Force sync now",
-      callback: () => this.restartSync(),
+      callback: () => {
+        this.restartSync();
+      },
     });
 
     this.addCommand({
       id: "toggle-pause",
       name: "Toggle sync pause",
-      callback: async () => {
+      callback: () => {
         this.settings.paused = !this.settings.paused;
-        await this.saveSettings();
-        await this.restartSync();
-        new Notice(
-          this.settings.paused ? "Sync paused" : "Sync resumed",
-        );
+        this.saveSettings()
+          .then(() => {
+            this.restartSync();
+            new Notice(
+              this.settings.paused ? "Sync paused" : "Sync resumed",
+            );
+          })
+          .catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.error("[SimpleSync] Failed to save settings:", err);
+          });
       },
     });
 
     // Start sync if settings are configured
-    if (this.settings.serverUrl && !this.settings.paused) {
+    if (this.settings.serverUrl !== "" && !this.settings.paused) {
       // Delay start slightly to let Obsidian finish loading
       this.registerInterval(
-        window.setTimeout(() => this.startSync(), 2000),
+        window.setTimeout(() => {
+          this.startSync().catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.error("[SimpleSync] Failed to start sync:", err);
+          });
+        }, 2000),
       );
     }
   }
 
-  onunload() {
+  public override onunload(): void {
     this.engine?.stop();
     this.engine = null;
     this.statusBar?.destroy();
     this.statusBar = null;
-    if (this.restartTimer) {
+    if (this.restartTimer !== null) {
       clearTimeout(this.restartTimer);
     }
   }
 
-  async loadSettings() {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      await this.loadData(),
-    );
+  public async loadSettings(): Promise<void> {
+    const raw: unknown = await this.loadData();
+    const loaded =
+      typeof raw === "object" && raw !== null
+        ? (raw as Partial<SyncSettings>)
+        : {};
+    this.settings = { ...DEFAULT_SETTINGS, ...loaded };
   }
 
-  async saveSettings() {
+  public async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
 
   /** Start or restart sync. Debounced to avoid rapid restarts from settings changes. */
-  async restartSync() {
-    if (this.restartTimer) {
+  public restartSync(): void {
+    if (this.restartTimer !== null) {
       clearTimeout(this.restartTimer);
     }
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
-      this.startSync();
+      this.startSync().catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[SimpleSync] Failed to start sync:", err);
+      });
     }, 500);
   }
 
-  private async startSync() {
+  private async startSync(): Promise<void> {
     // Stop existing engine
     this.engine?.stop();
     this.engine = null;
 
-    if (!this.settings.serverUrl || this.settings.paused) {
+    if (this.settings.serverUrl === "" || this.settings.paused) {
       this.statusBar?.update("idle");
       return;
     }
@@ -97,14 +114,15 @@ export default class SimpleSyncPlugin extends Plugin {
       this.statusBar?.update("initial-sync");
       await this.engine.start();
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("[SimpleSync] Failed to start sync:", err);
       new Notice("Sync failed to start. Check your settings.");
       this.statusBar?.update("error");
     }
   }
 
-  async testConnection(): Promise<boolean> {
-    if (!this.settings.serverUrl) {
+  public async testConnection(): Promise<boolean> {
+    if (this.settings.serverUrl === "") {
       new Notice("Please enter a server URL first.");
       return false;
     }

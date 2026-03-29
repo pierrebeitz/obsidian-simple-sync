@@ -1,4 +1,4 @@
-import { ChunkDocument, CHUNK_SIZE } from "./types";
+import { type ChunkDocument, CHUNK_SIZE } from "./types";
 
 /** Generate the chunk ID for a given parent and index */
 export function chunkId(parentId: string, index: number): string {

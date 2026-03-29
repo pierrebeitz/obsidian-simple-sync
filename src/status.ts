@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import type { Plugin } from 'obsidian';
 import type { SyncStatus } from './types';
 
 const STATUS_TEXT: Record<SyncStatus, string> = {
@@ -13,20 +13,20 @@ const STATUS_TEXT: Record<SyncStatus, string> = {
 export class StatusBar {
   private statusBarEl: HTMLElement | null = null;
 
-  constructor(plugin: Plugin) {
+  public constructor(plugin: Plugin) {
     this.statusBarEl = plugin.addStatusBarItem();
   }
 
   /** Update the status bar text based on sync status */
-  update(status: SyncStatus): void {
-    if (this.statusBarEl) {
+  public update(status: SyncStatus): void {
+    if (this.statusBarEl !== null) {
       this.statusBarEl.textContent = STATUS_TEXT[status];
     }
   }
 
   /** Clean up */
-  destroy(): void {
-    if (this.statusBarEl) {
+  public destroy(): void {
+    if (this.statusBarEl !== null) {
       this.statusBarEl.remove();
       this.statusBarEl = null;
     }

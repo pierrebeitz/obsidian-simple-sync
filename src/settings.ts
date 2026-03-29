@@ -1,24 +1,24 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { type App, type Plugin, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type { SyncSettings } from './types';
 
 /** Generic plugin interface so settings.ts doesn't depend on main.ts */
 interface SyncPlugin {
   app: App;
   settings: SyncSettings;
-  saveSettings(): Promise<void>;
-  restartSync(): Promise<void>;
-  testConnection(): Promise<boolean>;
+  saveSettings: () => Promise<void>;
+  restartSync: () => void;
+  testConnection: () => Promise<boolean>;
 }
 
 export class SyncSettingTab extends PluginSettingTab {
-  plugin: SyncPlugin;
+  public readonly plugin: SyncPlugin;
 
-  constructor(app: App, plugin: SyncPlugin) {
-    super(app, plugin as any);
+  public constructor(app: App, plugin: SyncPlugin) {
+    super(app, plugin as unknown as Plugin);
     this.plugin = plugin;
   }
 
-  display(): void {
+  public display(): void {
     const { containerEl } = this;
     containerEl.empty();
 
@@ -34,7 +34,7 @@ export class SyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.serverUrl = value;
             await this.plugin.saveSettings();
-            await this.plugin.restartSync();
+            this.plugin.restartSync();
           }),
       );
 
@@ -47,7 +47,7 @@ export class SyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.username = value;
             await this.plugin.saveSettings();
-            await this.plugin.restartSync();
+            this.plugin.restartSync();
           }),
       );
 
@@ -60,7 +60,7 @@ export class SyncSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.password = value;
             await this.plugin.saveSettings();
-            await this.plugin.restartSync();
+            this.plugin.restartSync();
           });
         text.inputEl.type = 'password';
       });
@@ -96,7 +96,7 @@ export class SyncSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.paused).onChange(async (value) => {
           this.plugin.settings.paused = value;
           await this.plugin.saveSettings();
-          await this.plugin.restartSync();
+          this.plugin.restartSync();
         }),
       );
   }

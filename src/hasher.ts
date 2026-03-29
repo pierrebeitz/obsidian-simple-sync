@@ -3,7 +3,7 @@
  *  We don't need cryptographic security, just change detection. */
 export async function computeHash(content: string): Promise<string> {
   const encoded = new TextEncoder().encode(content);
-  return computeHashBinary(encoded.buffer as ArrayBuffer);
+  return computeHashBinary(encoded.buffer);
 }
 
 /** Compute hash for binary content (ArrayBuffer) */
@@ -12,7 +12,11 @@ export async function computeHashBinary(buffer: ArrayBuffer): Promise<string> {
   const hashArray = new Uint8Array(hashBuffer);
   let hex = "";
   for (let i = 0; i < 8; i++) {
-    hex += hashArray[i].toString(16).padStart(2, "0");
+    const byte = hashArray[i];
+    if (byte === undefined) {
+      break;
+    }
+    hex += byte.toString(16).padStart(2, "0");
   }
   return hex;
 }
