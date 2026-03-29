@@ -9,12 +9,17 @@ export function err<E = Error>(error: E): Result<never, E> {
   return { ok: false, error };
 }
 
+/** Normalize an unknown thrown value to an Error instance. */
+export function toError(e: unknown): Error {
+  return e instanceof Error ? e : new Error(String(e));
+}
+
 /** Wrap a promise-returning function into a Result. */
 export async function tryAsync<T>(fn: () => Promise<T>): Promise<Result<T>> {
   try {
     return ok(await fn());
   } catch (e: unknown) {
-    return err(e instanceof Error ? e : new Error(String(e)));
+    return err(toError(e));
   }
 }
 

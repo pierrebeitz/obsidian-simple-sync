@@ -9,6 +9,9 @@ export default tseslint.config(
   ...tseslint.configs.stylisticTypeChecked,
 
   {
+    linterOptions: {
+      reportUnusedDisableDirectives: "error",
+    },
     languageOptions: {
       parserOptions: {
         projectService: true,
