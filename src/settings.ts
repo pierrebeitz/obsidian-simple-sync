@@ -44,6 +44,21 @@ function buildConnectionUrl(settings: SyncSettings): string {
   }
 }
 
+const wording = {
+  couchdbUrl: "CouchDB URL",
+  couchdbUrlPlaceholder: "E.g. https://your-server:5984",
+
+  connectionUrl: "Connection URL",
+  couchdbUsername: "CouchDB username",
+  couchdbPassword: "CouchDB password",
+
+  couchdbDatabaseName: "CouchDB database name",
+  couchdbDatabaseNamePlaceholder: "obsidian-simple-sync",
+
+  testConnection: "Test connection",
+  pauseSync: "Pause sync",
+};
+
 export class SyncSettingTab extends PluginSettingTab {
   public readonly syncPlugin: HasSyncSettings;
 
@@ -58,10 +73,10 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Connection URL")
-      .setDesc("Paste a full URL to auto-fill all fields below")
+      .setDesc("Paste a full URL to automatically fill all fields below.")
       .addText((text) =>
         text
-          .setPlaceholder("https://admin:password@your-server:5984/obsidian-sync")
+          .setPlaceholder("E.g. https://admin:password@your-server:5984/obsidian-sync")
           .setValue(buildConnectionUrl(this.syncPlugin.settings))
           .onChange(async (value) => {
             const parsed = parseConnectionUrl(value);
@@ -76,52 +91,40 @@ export class SyncSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
-      .setName("Server URL")
-      .setDesc("Address of your CouchDB server")
-      .addText((text) =>
-        text
-          .setPlaceholder("https://your-server:5984")
-          .setValue(this.syncPlugin.settings.serverUrl)
-          .onChange(async (value) => {
-            this.syncPlugin.settings.serverUrl = value;
-            await this.syncPlugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("Username")
-      .setDesc("Username for CouchDB authentication")
-      .addText((text) =>
-        text.setValue(this.syncPlugin.settings.username).onChange(async (value) => {
-          this.syncPlugin.settings.username = value;
+    new Setting(containerEl).setName(wording.couchdbUrl).addText((text) =>
+      text
+        .setPlaceholder(wording.couchdbUrlPlaceholder)
+        .setValue(this.syncPlugin.settings.serverUrl)
+        .onChange(async (value) => {
+          this.syncPlugin.settings.serverUrl = value;
           await this.syncPlugin.saveSettings();
         }),
-      );
+    );
 
-    new Setting(containerEl)
-      .setName("Password")
-      .setDesc("Password for CouchDB authentication")
-      .addText((text) => {
-        text.setValue(this.syncPlugin.settings.password).onChange(async (value) => {
-          this.syncPlugin.settings.password = value;
-          await this.syncPlugin.saveSettings();
-        });
-        text.inputEl.type = "password";
+    new Setting(containerEl).setName(wording.couchdbUsername).addText((text) =>
+      text.setValue(this.syncPlugin.settings.username).onChange(async (value) => {
+        this.syncPlugin.settings.username = value;
+        await this.syncPlugin.saveSettings();
+      }),
+    );
+
+    new Setting(containerEl).setName(wording.couchdbPassword).addText((text) => {
+      text.setValue(this.syncPlugin.settings.password).onChange(async (value) => {
+        this.syncPlugin.settings.password = value;
+        await this.syncPlugin.saveSettings();
       });
+      text.inputEl.type = "password";
+    });
 
-    new Setting(containerEl)
-      .setName("Database name")
-      .setDesc("Database on your CouchDB server")
-      .addText((text) =>
-        text
-          .setPlaceholder("obsidian-sync")
-          .setValue(this.syncPlugin.settings.dbName)
-          .onChange(async (value) => {
-            this.syncPlugin.settings.dbName = value;
-            await this.syncPlugin.saveSettings();
-          }),
-      );
+    new Setting(containerEl).setName(wording.couchdbDatabaseName).addText((text) =>
+      text
+        .setPlaceholder(wording.couchdbDatabaseNamePlaceholder)
+        .setValue(this.syncPlugin.settings.dbName)
+        .onChange(async (value) => {
+          this.syncPlugin.settings.dbName = value;
+          await this.syncPlugin.saveSettings();
+        }),
+    );
 
     new Setting(containerEl)
       .setName("Test connection")

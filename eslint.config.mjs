@@ -52,14 +52,8 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/explicit-module-boundary-types": "error",
-      "@typescript-eslint/explicit-member-accessibility": [
-        "error",
-        { accessibility: "explicit" },
-      ],
-      "@typescript-eslint/consistent-type-exports": [
-        "error",
-        { fixMixedExportsWithInlineTypeSpecifier: true },
-      ],
+      "@typescript-eslint/explicit-member-accessibility": ["error", { accessibility: "explicit" }],
+      "@typescript-eslint/consistent-type-exports": ["error", { fixMixedExportsWithInlineTypeSpecifier: true }],
       "@typescript-eslint/consistent-type-imports": [
         "error",
         {
@@ -71,30 +65,15 @@ export default tseslint.config(
       "@typescript-eslint/method-signature-style": ["error", "property"],
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/promise-function-async": "error",
-      "@typescript-eslint/require-array-sort-compare": [
-        "error",
-        { ignoreStringArrays: false },
-      ],
+      "@typescript-eslint/require-array-sort-compare": ["error", { ignoreStringArrays: false }],
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/no-unnecessary-qualifier": "error",
       "@typescript-eslint/no-useless-empty-export": "error",
 
-      "@typescript-eslint/no-floating-promises": [
-        "error",
-        { ignoreVoid: false, checkThenables: true },
-      ],
-      "@typescript-eslint/no-misused-promises": [
-        "error",
-        { checksVoidReturn: true, checksConditionals: true },
-      ],
-      "@typescript-eslint/no-confusing-void-expression": [
-        "error",
-        { ignoreArrowShorthand: false, ignoreVoidOperator: false },
-      ],
-      "@typescript-eslint/no-explicit-any": [
-        "error",
-        { ignoreRestArgs: false, fixToUnknown: true },
-      ],
+      "@typescript-eslint/no-floating-promises": ["error", { ignoreVoid: false, checkThenables: true }],
+      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: true, checksConditionals: true }],
+      "@typescript-eslint/no-confusing-void-expression": ["error", { ignoreArrowShorthand: false, ignoreVoidOperator: false }],
+      "@typescript-eslint/no-explicit-any": ["error", { ignoreRestArgs: false, fixToUnknown: true }],
       "@typescript-eslint/prefer-nullish-coalescing": [
         "error",
         {
@@ -107,30 +86,19 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "@typescript-eslint/no-non-null-assertion": "error",
 
-      "eqeqeq": ["error", "always"],
+      eqeqeq: ["error", "always"],
       "no-param-reassign": "error",
       "no-implicit-coercion": "error",
-      "curly": ["error", "multi"],
+      curly: ["error", "multi"],
     },
   },
 
   {
     plugins: { obsidianmd },
-    rules: {
-      ...obsidianmd.configs.recommended,
-      "obsidianmd/ui/sentence-case": "off",
-    },
+    rules: { ...obsidianmd.configs.recommended },
   },
 
   {
-    ignores: [
-      "**/dist/**",
-      "**/node_modules/**",
-      "main.js",
-      "esbuild.config.mjs",
-      "eslint.config.mjs",
-      "vitest.config.ts",
-      "test/**",
-    ],
+    ignores: ["**/dist/**", "**/node_modules/**", "main.js", "esbuild.config.mjs", "eslint.config.mjs", "vitest.config.ts", "test/**"],
   },
 );

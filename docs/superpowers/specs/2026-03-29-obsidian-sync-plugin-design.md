@@ -53,37 +53,41 @@ Bridges the Obsidian Vault API with PouchDB. Responsibilities:
 - **Conflict resolution**: When PouchDB detects a conflict, resolve it automatically
 
 Document schema per file:
+
 ```typescript
 interface SyncDocument {
-  _id: string;          // vault-relative file path (e.g., "notes/daily.md")
-  _rev: string;         // CouchDB revision (managed automatically)
-  content: string;      // file content (text files)
+  _id: string; // vault-relative file path (e.g., "notes/daily.md")
+  _rev: string; // CouchDB revision (managed automatically)
+  content: string; // file content (text files)
   contentType: "text" | "binary";
-  chunks?: string[];    // for binary/large files: array of chunk doc IDs
-  mtime: number;        // last modified timestamp (ms)
-  size: number;         // file size in bytes
-  deleted?: boolean;    // soft-delete flag
-  hash: string;         // MD5 of content for change detection
+  chunks?: string[]; // for binary/large files: array of chunk doc IDs
+  mtime: number; // last modified timestamp (ms)
+  size: number; // file size in bytes
+  deleted?: boolean; // soft-delete flag
+  hash: string; // MD5 of content for change detection
 }
 ```
 
 For binary files > 1MB, content is stored as chunks:
+
 ```typescript
 interface ChunkDocument {
-  _id: string;          // "chunk:<parent-id>:<index>"
-  data: string;         // base64-encoded chunk (512KB each)
+  _id: string; // "chunk:<parent-id>:<index>"
+  data: string; // base64-encoded chunk (512KB each)
 }
 ```
 
 #### 2. Change Detection
 
 **Local changes** (vault → PouchDB):
+
 - Listen to `vault.on('create' | 'modify' | 'delete' | 'rename')`
 - Debounce rapid changes (300ms) to avoid syncing mid-keystroke
 - Compute MD5 hash; skip if hash matches stored version (avoids redundant writes)
 - Guard against initial vault load events using `workspace.onLayoutReady()`
 
 **Remote changes** (PouchDB → vault):
+
 - PouchDB live replication fires `change` events
 - Set a "syncing" flag to prevent echo (remote change → vault write → vault event → PouchDB write)
 - Compare hash before writing to vault (skip if identical)
@@ -107,6 +111,7 @@ For binary files: latest `mtime` wins. No merge attempted.
 #### 4. Server (CouchDB)
 
 Minimal docker-compose.yml:
+
 ```yaml
 services:
   couchdb:
@@ -126,6 +131,7 @@ volumes:
 ```
 
 Custom config (`couchdb.ini`):
+
 ```ini
 [chttpd]
 enable_cors = true
@@ -142,12 +148,14 @@ _default = [{db_fragmentation, "70%"}, {view_fragmentation, "60%"}]
 ```
 
 Database setup (automated by plugin on first connect):
+
 - Creates a per-user database: `sync_<username>`
 - Enables auto-compaction
 
 #### 5. Settings UI
 
 Minimal settings tab:
+
 - **Server URL**: `https://your-server:5984`
 - **Username**: text input
 - **Password**: password input
@@ -160,6 +168,7 @@ That's it. No folder exclusions, no sync interval config, no advanced options.
 ## Data Flow
 
 ### Normal Edit (Online)
+
 ```
 1. User edits note on Desktop
 2. Vault fires 'modify' event
@@ -173,6 +182,7 @@ That's it. No folder exclusions, no sync interval config, no advanced options.
 ```
 
 ### Offline Edit + Reconnect
+
 ```
 1. Desktop and Android both edit "daily.md" while offline
 2. Each device writes its version to local PouchDB
@@ -191,6 +201,7 @@ That's it. No folder exclusions, no sync interval config, no advanced options.
 Three scenarios when plugin first connects:
 
 **Scenario 1: Existing vault, fresh server (most common)**
+
 - Plugin detects empty remote DB
 - Batch-scans local vault files (50 at a time)
 - Bulk-writes to PouchDB via `bulkDocs`
@@ -198,12 +209,14 @@ Three scenarios when plugin first connects:
 - Progress notice: "Uploading 342/500 files..."
 
 **Scenario 2: Fresh vault, existing server (adding second device)**
+
 - Plugin detects empty local PouchDB, populated remote
 - PouchDB replication pulls all docs
 - Sync engine writes each doc to vault (with `syncing` flag to suppress echo)
 - Progress notice: "Downloading 342/500 files..."
 
 **Scenario 3: Both sides have content (re-linking)**
+
 - Pull remote `_all_docs` with hashes
 - Diff local vault against remote:
   - Local-only → push to PouchDB
@@ -226,6 +239,7 @@ Batching (50 files/batch) prevents UI blocking. A notice shows progress througho
 ## MVP Scope
 
 **In:**
+
 - Text file sync (markdown, plaintext, JSON, YAML)
 - Binary file sync (images, PDFs) with chunking
 - Automatic conflict resolution
@@ -235,6 +249,7 @@ Batching (50 files/batch) prevents UI blocking. A notice shows progress througho
 - Debounced change detection
 
 **Out (post-MVP):**
+
 - End-to-end encryption
 - iOS support (likely works but untested)
 - Selective folder sync

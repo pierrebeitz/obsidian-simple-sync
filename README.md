@@ -11,7 +11,7 @@ You have notes on your laptop and you want them on your phone. The options aren'
 - **Syncthing** is solid but doesn't run on iOS, and the Android app needs attention to stay alive in the background.
 - **Git-based plugins** are powerful if you're comfortable with Git on every device. Most people aren't, especially on mobile.
 
-Simple Sync takes a different path: your notes live in a CouchDB database that *you* run, sync happens instantly over HTTP, and when two devices edit the same note, both versions are preserved — never silently discarded. One server, four settings, and you're syncing.
+Simple Sync takes a different path: your notes live in a CouchDB database that _you_ run, sync happens instantly over HTTP, and when two devices edit the same note, both versions are preserved — never silently discarded. One server, four settings, and you're syncing.
 
 ## How it works
 
@@ -42,7 +42,7 @@ notes/
 
 Both versions are right there in your vault. You can diff them, merge them manually, or delete the conflict copy — whatever makes sense for that situation. The conflict file syncs to all devices like any other file, so you'll see it everywhere.
 
-This is a deliberate choice. Automatic merging sounds appealing, but when it goes wrong you lose data silently. Conflict copies are noisy — you *notice* them — and that's the point.
+This is a deliberate choice. Automatic merging sounds appealing, but when it goes wrong you lose data silently. Conflict copies are noisy — you _notice_ them — and that's the point.
 
 ### Binary files (images, PDFs, etc.)
 
@@ -63,12 +63,14 @@ You need a CouchDB instance reachable from all your devices. There are a few way
 Create three files on your server:
 
 **`.env`**
+
 ```bash
 COUCHDB_USER=admin
 COUCHDB_PASSWORD=changeme    # pick something strong
 ```
 
 **`couchdb.ini`** — enables CORS (required — Obsidian is a browser and won't connect without it):
+
 ```ini
 [chttpd]
 bind_address = 0.0.0.0
@@ -85,6 +87,7 @@ _default = [{db_fragmentation, "70%"}, {view_fragmentation, "60%"}]
 ```
 
 **`docker-compose.yml`**
+
 ```yaml
 services:
   couchdb:
@@ -134,12 +137,12 @@ Install **Simple Sync** from the Obsidian Community Plugins browser, or manually
 
 Open **Settings → Simple Sync** and enter:
 
-| Setting | Example |
-|---------|---------|
-| Server URL | `http://192.168.1.50:5984` or `https://couch.yourdomain.com` |
-| Username | `admin` |
-| Password | `changeme` |
-| Database Name | `obsidian-sync` |
+| Setting       | Example                                                      |
+| ------------- | ------------------------------------------------------------ |
+| Server URL    | `http://192.168.1.50:5984` or `https://couch.yourdomain.com` |
+| Username      | `admin`                                                      |
+| Password      | `changeme`                                                   |
+| Database Name | `obsidian-sync`                                              |
 
 Hit **Test Connection** to verify, then close settings. Sync starts automatically.
 

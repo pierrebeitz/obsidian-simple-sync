@@ -580,7 +580,8 @@ export class SyncEngine {
             await ensureParentFolder(this.app, cPath);
             await this.app.vault.create(cPath, resolution.loserContent ?? "");
           });
-          if (createResult.ok) new Notice(`Conflict resolved: ${winnerDoc._id}\nSaved alternate version as ${cPath.split("/").pop() ?? cPath}`);
+          if (createResult.ok)
+            new Notice(`Conflict resolved: ${winnerDoc._id}\nSaved alternate version as ${cPath.split("/").pop() ?? cPath}`);
           else console.error(`[SyncEngine] Failed to create conflict file ${cPath}:`, createResult.error);
         }
 
